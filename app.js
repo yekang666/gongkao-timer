@@ -183,6 +183,8 @@ const pipOutputCanvas = $('#pipOutputCanvas');
 const pipGl = pipOutputCanvas.getContext('webgl2', { alpha: false, antialias: false }) || pipOutputCanvas.getContext('webgl', { alpha: false, antialias: false });
 let pipGlProgram = null;
 let pipGlTexture = null;
+let pipCaptionTrack = null;
+let pipCaptionCue = null;
 
 function isAppleMobile() {
   return /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -233,13 +235,43 @@ function keepPipFramesAlive() {
 }
 
 async function ensureVideoPipSource() {
-  drawVideoPip();
-  if (!pipStream) {
-    const sourceCanvas = pipGl ? pipOutputCanvas : pipCanvas;
-    pipStream = sourceCanvas.captureStream(2);
-    pipVideo.srcObject = pipStream;
+  if (isAppleMobile()) {
+    if (!pipVideo.src.endsWith('pip-background.mp4')) {
+      pipVideo.srcObject = null;
+      pipVideo.src = 'pip-background.mp4';
+      pipVideo.load();
+    }
+    ensureNativeCaption();
+  } else {
+    drawVideoPip();
+    if (!pipStream) {
+      const sourceCanvas = pipGl ? pipOutputCanvas : pipCanvas;
+      pipStream = sourceCanvas.captureStream(2);
+      pipVideo.srcObject = pipStream;
+    }
+    keepPipFramesAlive();
   }
-  await pipVideo.play(); keepPipFramesAlive();
+  await pipVideo.play();
+}
+
+function ensureNativeCaption() {
+  if (!pipCaptionTrack) {
+    pipCaptionTrack = pipVideo.addTextTrack('captions', '实时计时', 'zh-CN');
+    pipCaptionTrack.mode = 'showing';
+  }
+  updateNativeCaption();
+}
+
+function updateNativeCaption() {
+  if (!pipCaptionTrack) return;
+  if (pipCaptionCue) pipCaptionTrack.removeCue(pipCaptionCue);
+  const seconds = state.mode === 'single' ? state.elapsed : state.remaining;
+  const status = { idle:'准备开始', running:'计时中', paused:'已暂停', finished:'本轮结束' }[state.status];
+  const Cue = window.VTTCue || window.TextTrackCue;
+  if (!Cue) return;
+  pipCaptionCue = new Cue(0, Number.MAX_SAFE_INTEGER, `${state.preset.name}\n${formatClock(seconds)}  ·  ${status}`);
+  pipCaptionCue.align = 'center'; pipCaptionCue.line = 70; pipCaptionCue.size = 90;
+  pipCaptionTrack.addCue(pipCaptionCue);
 }
 
 function supportsSafariPip() {
@@ -278,6 +310,7 @@ async function togglePip() {
 }
 function updatePip(){
   drawVideoPip();
+  updateNativeCaption();
   if(!pipWindow)return;
   pipWindow.document.querySelector('.name').textContent=state.preset.name;pipWindow.document.querySelector('.time').textContent=formatClock(state.mode==='single'?state.elapsed:state.remaining);pipWindow.document.querySelector('.status').textContent={idle:'准备开始',running:'计时中',paused:'已暂停',finished:'本轮结束'}[state.status];
 }

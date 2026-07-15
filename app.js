@@ -236,11 +236,17 @@ function keepPipFramesAlive() {
 
 async function ensureVideoPipSource() {
   if (isAppleMobile()) {
-    if (!pipVideo.src.endsWith('pip-background.mp4')) {
+    const source = state.mode === 'single' ? 'pip-stopwatch.mp4' : 'pip-countdown.mp4';
+    if (!pipVideo.src.endsWith(source)) {
       pipVideo.srcObject = null;
-      pipVideo.src = 'pip-background.mp4';
+      pipVideo.src = source;
       pipVideo.load();
+      await new Promise((resolve, reject) => {
+        pipVideo.addEventListener('loadedmetadata', resolve, { once: true });
+        pipVideo.addEventListener('error', reject, { once: true });
+      });
     }
+    syncNativeVideoTime(true);
     ensureNativeCaption();
   } else {
     drawVideoPip();
@@ -265,13 +271,20 @@ function ensureNativeCaption() {
 function updateNativeCaption() {
   if (!pipCaptionTrack) return;
   if (pipCaptionCue) pipCaptionTrack.removeCue(pipCaptionCue);
-  const seconds = state.mode === 'single' ? state.elapsed : state.remaining;
   const status = { idle:'准备开始', running:'计时中', paused:'已暂停', finished:'本轮结束' }[state.status];
   const Cue = window.VTTCue || window.TextTrackCue;
   if (!Cue) return;
-  pipCaptionCue = new Cue(0, Number.MAX_SAFE_INTEGER, `${state.preset.name}\n${formatClock(seconds)}  ·  ${status}`);
-  pipCaptionCue.align = 'center'; pipCaptionCue.line = 70; pipCaptionCue.size = 90;
+  pipCaptionCue = new Cue(0, Number.MAX_SAFE_INTEGER, `${state.preset.name}  ·  ${status}`);
+  pipCaptionCue.align = 'center'; pipCaptionCue.line = 88; pipCaptionCue.size = 70;
   pipCaptionTrack.addCue(pipCaptionCue);
+}
+
+function syncNativeVideoTime(force = false) {
+  if (!isAppleMobile() || !pipVideo.src) return;
+  const target = state.mode === 'single' ? Math.min(state.elapsed, 10800) : Math.max(0, 10800 - Math.min(state.remaining, 10800));
+  if (force || Math.abs(pipVideo.currentTime - target) > 1.4) pipVideo.currentTime = target;
+  if (state.status === 'running') pipVideo.play().catch(() => {});
+  else pipVideo.pause();
 }
 
 function supportsSafariPip() {
@@ -284,6 +297,7 @@ async function toggleVideoPip() {
   if (supportsSafariPip()) {
     const leaving = pipVideo.webkitPresentationMode === 'picture-in-picture';
     pipVideo.webkitSetPresentationMode(leaving ? 'inline' : 'picture-in-picture');
+    if (!leaving) syncNativeVideoTime(true);
     if (!leaving && isAppleMobile()) showToast('已开启画中画，可返回桌面或切换应用');
     return;
   }
@@ -310,6 +324,7 @@ async function togglePip() {
 }
 function updatePip(){
   drawVideoPip();
+  syncNativeVideoTime();
   updateNativeCaption();
   if(!pipWindow)return;
   pipWindow.document.querySelector('.name').textContent=state.preset.name;pipWindow.document.querySelector('.time').textContent=formatClock(state.mode==='single'?state.elapsed:state.remaining);pipWindow.document.querySelector('.status').textContent={idle:'准备开始',running:'计时中',paused:'已暂停',finished:'本轮结束'}[state.status];

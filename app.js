@@ -7,7 +7,7 @@ const PRESETS = {
   section: [
     { name: '资料分析', seconds: 25 * 60 }, { name: '言语理解', seconds: 30 * 60 },
     { name: '判断推理', seconds: 35 * 60 }, { name: '数量关系', seconds: 20 * 60 },
-    { name: '政治理论', seconds: 15 * 60 }, { name: '常识判断', seconds: 10 * 60 }
+    { name: '政治理论', seconds: 10 * 60 }, { name: '常识判断', seconds: 5 * 60 }
   ],
   single: [{ name: '单题测速', seconds: 0 }]
 };

@@ -174,14 +174,75 @@ function openDrawer(drawer){ closeDrawers();drawer.classList.add('open');drawer.
 function closeDrawers(){ $$('.drawer').forEach(d=>{d.classList.remove('open');d.setAttribute('aria-hidden','true')});$('#backdrop').classList.add('hidden'); }
 
 let pipWindow = null;
-async function togglePip() {
-  if (pipWindow) { pipWindow.close(); return; }
-  if (!('documentPictureInPicture' in window)) { showToast('当前浏览器不支持悬浮窗口，请使用新版 Chrome 或 Edge'); return; }
-  pipWindow = await documentPictureInPicture.requestWindow({ width: 340, height: 180 });
-  const style = pipWindow.document.createElement('style'); style.textContent='body{margin:0;background:#18201b;color:#f2f5f2;display:grid;place-items:center;height:100vh;font-family:Segoe UI,sans-serif}.wrap{text-align:center}.time{font:700 48px Consolas,monospace}.name{color:#a9b8ae;margin-bottom:8px}.status{color:#73ae92;font-size:12px;margin-top:8px}'; pipWindow.document.head.append(style);
-  pipWindow.document.body.innerHTML='<div class="wrap"><div class="name"></div><div class="time"></div><div class="status"></div></div>'; pipWindow.addEventListener('pagehide',()=>pipWindow=null); updatePip();
+let pipStream = null;
+let pipFrame = null;
+const pipVideo = $('#pipVideo');
+const pipCanvas = $('#pipCanvas');
+const pipContext = pipCanvas.getContext('2d');
+
+function isAppleMobile() {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
-function updatePip(){ if(!pipWindow)return;pipWindow.document.querySelector('.name').textContent=state.preset.name;pipWindow.document.querySelector('.time').textContent=formatClock(state.mode==='single'?state.elapsed:state.remaining);pipWindow.document.querySelector('.status').textContent={idle:'准备开始',running:'计时中',paused:'已暂停',finished:'本轮结束'}[state.status]; }
+
+function drawVideoPip() {
+  const seconds = state.mode === 'single' ? state.elapsed : state.remaining;
+  pipContext.fillStyle = '#18201b'; pipContext.fillRect(0, 0, pipCanvas.width, pipCanvas.height);
+  pipContext.textAlign = 'center'; pipContext.fillStyle = '#a9b8ae'; pipContext.font = '600 30px sans-serif';
+  pipContext.fillText(state.preset.name, pipCanvas.width / 2, 82);
+  pipContext.fillStyle = state.status === 'finished' && state.autoFinished ? '#ef756e' : '#f2f5f2';
+  pipContext.font = '700 92px monospace'; pipContext.fillText(formatClock(seconds), pipCanvas.width / 2, 215);
+  pipContext.fillStyle = '#73ae92'; pipContext.font = '24px sans-serif';
+  pipContext.fillText({ idle:'准备开始', running:'计时中', paused:'已暂停', finished:'本轮结束' }[state.status], pipCanvas.width / 2, 292);
+}
+
+async function ensureVideoPipSource() {
+  drawVideoPip();
+  if (!pipStream) {
+    pipStream = pipCanvas.captureStream(2);
+    pipVideo.srcObject = pipStream;
+  }
+  await pipVideo.play();
+}
+
+function supportsSafariPip() {
+  return typeof pipVideo.webkitSetPresentationMode === 'function' &&
+    (!pipVideo.webkitSupportsPresentationMode || pipVideo.webkitSupportsPresentationMode('picture-in-picture'));
+}
+
+async function toggleVideoPip() {
+  await ensureVideoPipSource();
+  if (supportsSafariPip()) {
+    const leaving = pipVideo.webkitPresentationMode === 'picture-in-picture';
+    pipVideo.webkitSetPresentationMode(leaving ? 'inline' : 'picture-in-picture');
+    if (!leaving && isAppleMobile()) showToast('已开启画中画，可返回桌面或切换应用');
+    return;
+  }
+  if (document.pictureInPictureEnabled && pipVideo.requestPictureInPicture) {
+    if (document.pictureInPictureElement) await document.exitPictureInPicture();
+    else await pipVideo.requestPictureInPicture();
+    return;
+  }
+  throw new Error('Picture-in-Picture unavailable');
+}
+
+async function togglePip() {
+  try {
+    if (pipWindow) { pipWindow.close(); return; }
+    if ('documentPictureInPicture' in window && !isAppleMobile()) {
+      pipWindow = await documentPictureInPicture.requestWindow({ width: 340, height: 180 });
+      const style = pipWindow.document.createElement('style'); style.textContent='body{margin:0;background:#18201b;color:#f2f5f2;display:grid;place-items:center;height:100vh;font-family:Segoe UI,sans-serif}.wrap{text-align:center}.time{font:700 48px Consolas,monospace}.name{color:#a9b8ae;margin-bottom:8px}.status{color:#73ae92;font-size:12px;margin-top:8px}'; pipWindow.document.head.append(style);
+      pipWindow.document.body.innerHTML='<div class="wrap"><div class="name"></div><div class="time"></div><div class="status"></div></div>'; pipWindow.addEventListener('pagehide',()=>pipWindow=null); updatePip(); return;
+    }
+    await toggleVideoPip();
+  } catch {
+    showToast(isAppleMobile() ? '请在系统设置中开启“自动画中画”，并使用 Safari 打开' : '当前浏览器不支持悬浮计时');
+  }
+}
+function updatePip(){
+  drawVideoPip();
+  if(!pipWindow)return;
+  pipWindow.document.querySelector('.name').textContent=state.preset.name;pipWindow.document.querySelector('.time').textContent=formatClock(state.mode==='single'?state.elapsed:state.remaining);pipWindow.document.querySelector('.status').textContent={idle:'准备开始',running:'计时中',paused:'已暂停',finished:'本轮结束'}[state.status];
+}
 
 $$('.mode-tab').forEach(tab => tab.addEventListener('click', () => setMode(tab.dataset.mode)));
 $('#startBtn').addEventListener('click', startOrPause); $('#resetBtn').addEventListener('click', () => resetTimer(true)); $('#finishBtn').addEventListener('click', requestFinish);

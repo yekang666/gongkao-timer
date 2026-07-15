@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>公考刷题计时器</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">考</span>
+        <div><strong>公考刷题计时器</strong><small>专注每一次提速</small></div>
+      </div>
+      <div class="top-actions">
+        <button class="icon-button" id="pipBtn" type="button" title="开启悬浮计时" aria-label="开启悬浮计时">▣</button>
+        <button class="icon-button" id="statsBtn" type="button" title="数据复盘" aria-label="打开数据复盘">▥</button>
+        <button class="icon-button" id="settingsBtn" type="button" title="设置" aria-label="打开设置">⚙</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <nav class="mode-tabs" aria-label="计时模式">
+        <button class="mode-tab active" data-mode="mock" type="button"><span>模考模式</span><small>整套模拟</small></button>
+        <button class="mode-tab" data-mode="section" type="button"><span>专项模式</span><small>模块提速</small></button>
+        <button class="mode-tab" data-mode="single" type="button"><span>单题测速</span><small>逐题记录</small></button>
+      </nav>
+
+      <section class="timer-stage" aria-labelledby="sessionTitle">
+        <div class="session-heading">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="sessionStatus">准备开始</span>
+          <span class="divider">·</span>
+          <span id="sessionTitle">行测模考</span>
+        </div>
+        <div class="timer" id="timerDisplay" aria-live="polite">02:00:00</div>
+        <p class="timer-hint" id="timerHint">建议按正式考试节奏完成，计时结束将自动记录</p>
+
+        <div class="preset-area" id="presetArea">
+          <div class="preset-list" id="presetList"></div>
+          <button class="text-button" id="customTimeBtn" type="button">＋ 自定义时间</button>
+        </div>
+
+        <div class="custom-time hidden" id="customTimePanel">
+          <label>时<input id="hoursInput" type="number" min="0" max="23" value="0"></label>
+          <span>:</span>
+          <label>分<input id="minutesInput" type="number" min="0" max="59" value="30"></label>
+          <span>:</span>
+          <label>秒<input id="secondsInput" type="number" min="0" max="59" value="0"></label>
+          <button class="small-button" id="applyTimeBtn" type="button">应用</button>
+        </div>
+
+        <div class="controls">
+          <button class="secondary control-button" id="resetBtn" type="button" disabled>↺<span>重置</span></button>
+          <button class="primary control-button" id="startBtn" type="button">▶<span>开始</span></button>
+          <button class="secondary control-button" id="finishBtn" type="button" disabled>■<span>结束</span></button>
+        </div>
+        <div class="single-summary hidden" id="singleSummary"><span>本轮已完成 <strong id="questionCount">0</strong> 题</span><span>平均 <strong id="questionAverage">00:00</strong></span></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="backdrop hidden" id="backdrop"></div>
+  <aside class="drawer" id="statsDrawer" aria-hidden="true">
+    <div class="drawer-header"><div><span class="eyebrow">训练记录</span><h2>数据复盘</h2></div><button class="icon-button close-drawer" type="button" aria-label="关闭">×</button></div>
+    <div class="summary-grid">
+      <article><span>今日刷题</span><strong id="todayDuration">0 分钟</strong></article>
+      <article><span>本周训练</span><strong id="weekCount">0 次</strong></article>
+      <article><span>本周时长</span><strong id="weekDuration">0 分钟</strong></article>
+    </div>
+    <section class="drawer-section"><div class="section-title"><h3>专项表现</h3><span>平均用时 / 超时</span></div><div class="module-stats" id="moduleStats"></div></section>
+    <section class="drawer-section grow"><div class="section-title"><h3>最近记录</h3><button class="danger-link" id="clearAllBtn" type="button">清空全部</button></div><div class="history-list" id="historyList"></div></section>
+  </aside>
+
+  <aside class="drawer" id="settingsDrawer" aria-hidden="true">
+    <div class="drawer-header"><div><span class="eyebrow">个人偏好</span><h2>计时设置</h2></div><button class="icon-button close-drawer" type="button" aria-label="关闭">×</button></div>
+    <div class="settings-list">
+      <label class="setting-row"><span><strong>结束提示音</strong><small>倒计时结束时播放短促音效</small></span><input id="soundToggle" type="checkbox" checked></label>
+      <label class="setting-row"><span><strong>深色专注模式</strong><small>降低环境光干扰</small></span><input id="themeToggle" type="checkbox"></label>
+      <label class="setting-block"><span><strong>计时数字大小</strong><output id="fontSizeOutput">标准</output></span><input id="fontSizeRange" type="range" min="0" max="2" step="1" value="1"></label>
+      <label class="setting-block"><span><strong>倒计时预警</strong><output id="warningOutput">最后 1 分钟</output></span><input id="warningRange" type="range" min="10" max="300" step="10" value="60"></label>
+    </div>
+    <div class="privacy-note"><strong>数据仅保存在当前设备</strong><p>训练记录和个人设置使用浏览器本地存储，不会上传。</p></div>
+  </aside>
+
+  <dialog id="finishDialog">
+    <div class="dialog-icon">✓</div><h2 id="dialogTitle">本次训练已完成</h2><p id="dialogMessage"></p>
+    <label class="question-input hidden" id="questionInputWrap">完成题数<input id="finishQuestionCount" type="number" min="1" value="1"></label>
+    <div class="dialog-actions"><button class="secondary" id="cancelFinishBtn" type="button">取消</button><button class="primary" id="confirmFinishBtn" type="button">保存记录</button></div>
+  </dialog>
+
+  <div class="toast hidden" id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>

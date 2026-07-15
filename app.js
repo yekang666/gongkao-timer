@@ -179,6 +179,10 @@ let pipFrame = null;
 const pipVideo = $('#pipVideo');
 const pipCanvas = $('#pipCanvas');
 const pipContext = pipCanvas.getContext('2d');
+const pipOutputCanvas = $('#pipOutputCanvas');
+const pipGl = pipOutputCanvas.getContext('webgl2', { alpha: false, antialias: false }) || pipOutputCanvas.getContext('webgl', { alpha: false, antialias: false });
+let pipGlProgram = null;
+let pipGlTexture = null;
 
 function isAppleMobile() {
   return /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -193,15 +197,49 @@ function drawVideoPip() {
   pipContext.font = '700 92px monospace'; pipContext.fillText(formatClock(seconds), pipCanvas.width / 2, 215);
   pipContext.fillStyle = '#73ae92'; pipContext.font = '24px sans-serif';
   pipContext.fillText({ idle:'准备开始', running:'计时中', paused:'已暂停', finished:'本轮结束' }[state.status], pipCanvas.width / 2, 292);
+  renderWebGlPip();
+}
+
+function createShader(gl, type, source) {
+  const shader = gl.createShader(type); gl.shaderSource(shader, source); gl.compileShader(shader); return shader;
+}
+
+function initWebGlPip() {
+  if (!pipGl || pipGlProgram) return;
+  const vertex = createShader(pipGl, pipGl.VERTEX_SHADER, 'attribute vec2 p;attribute vec2 t;varying vec2 v;void main(){gl_Position=vec4(p,0.,1.);v=t;}');
+  const fragment = createShader(pipGl, pipGl.FRAGMENT_SHADER, 'precision mediump float;uniform sampler2D image;varying vec2 v;void main(){gl_FragColor=texture2D(image,v);}');
+  pipGlProgram = pipGl.createProgram(); pipGl.attachShader(pipGlProgram, vertex); pipGl.attachShader(pipGlProgram, fragment); pipGl.linkProgram(pipGlProgram); pipGl.useProgram(pipGlProgram);
+  const buffer = pipGl.createBuffer(); pipGl.bindBuffer(pipGl.ARRAY_BUFFER, buffer);
+  pipGl.bufferData(pipGl.ARRAY_BUFFER, new Float32Array([-1,-1,0,1, 1,-1,1,1, -1,1,0,0, -1,1,0,0, 1,-1,1,1, 1,1,1,0]), pipGl.STATIC_DRAW);
+  const position = pipGl.getAttribLocation(pipGlProgram, 'p'), texture = pipGl.getAttribLocation(pipGlProgram, 't');
+  pipGl.enableVertexAttribArray(position); pipGl.vertexAttribPointer(position, 2, pipGl.FLOAT, false, 16, 0);
+  pipGl.enableVertexAttribArray(texture); pipGl.vertexAttribPointer(texture, 2, pipGl.FLOAT, false, 16, 8);
+  pipGlTexture = pipGl.createTexture(); pipGl.bindTexture(pipGl.TEXTURE_2D, pipGlTexture);
+  pipGl.texParameteri(pipGl.TEXTURE_2D, pipGl.TEXTURE_MIN_FILTER, pipGl.LINEAR); pipGl.texParameteri(pipGl.TEXTURE_2D, pipGl.TEXTURE_MAG_FILTER, pipGl.LINEAR);
+  pipGl.texParameteri(pipGl.TEXTURE_2D, pipGl.TEXTURE_WRAP_S, pipGl.CLAMP_TO_EDGE); pipGl.texParameteri(pipGl.TEXTURE_2D, pipGl.TEXTURE_WRAP_T, pipGl.CLAMP_TO_EDGE);
+}
+
+function renderWebGlPip() {
+  if (!pipGl) return;
+  initWebGlPip(); pipGl.viewport(0, 0, pipOutputCanvas.width, pipOutputCanvas.height);
+  pipGl.bindTexture(pipGl.TEXTURE_2D, pipGlTexture); pipGl.texImage2D(pipGl.TEXTURE_2D, 0, pipGl.RGBA, pipGl.RGBA, pipGl.UNSIGNED_BYTE, pipCanvas);
+  pipGl.drawArrays(pipGl.TRIANGLES, 0, 6); pipGl.flush();
+}
+
+function keepPipFramesAlive() {
+  if (pipFrame) return;
+  const refresh = () => { drawVideoPip(); pipFrame = requestAnimationFrame(refresh); };
+  pipFrame = requestAnimationFrame(refresh);
 }
 
 async function ensureVideoPipSource() {
   drawVideoPip();
   if (!pipStream) {
-    pipStream = pipCanvas.captureStream(2);
+    const sourceCanvas = pipGl ? pipOutputCanvas : pipCanvas;
+    pipStream = sourceCanvas.captureStream(2);
     pipVideo.srcObject = pipStream;
   }
-  await pipVideo.play();
+  await pipVideo.play(); keepPipFramesAlive();
 }
 
 function supportsSafariPip() {

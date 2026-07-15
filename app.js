@@ -185,6 +185,7 @@ let pipGlProgram = null;
 let pipGlTexture = null;
 let pipCaptionTrack = null;
 let pipCaptionCue = null;
+let mobilePipSyncTimer = null;
 
 function isAppleMobile() {
   return /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -282,12 +283,28 @@ function updateNativeCaption() {
   pipCaptionTrack.addCue(pipCaptionCue);
 }
 
+function getMobilePipTargetTime() {
+  const displaySeconds = state.mode === 'single' ? state.elapsed : state.remaining;
+  const rounded = Math.max(0, Math.round(displaySeconds));
+  return state.mode === 'single' ? Math.min(rounded, 10800) : Math.max(0, 10800 - Math.min(rounded, 10800));
+}
+
 function syncNativeVideoTime(force = false) {
-  if (!isAppleMobile() || !pipVideo.src) return;
-  const target = state.mode === 'single' ? Math.min(state.elapsed, 10800) : Math.max(0, 10800 - Math.min(state.remaining, 10800));
-  if (force || Math.abs(pipVideo.currentTime - target) > 1.4) pipVideo.currentTime = target;
+  if (!isAppleMobile() || !pipVideo.src || pipVideo.readyState < 1) return;
+  const target = getMobilePipTargetTime();
+  const threshold = state.status === 'running' ? 0.25 : 0.05;
+  if (force || Math.abs(pipVideo.currentTime - target) > threshold) pipVideo.currentTime = target;
   if (state.status === 'running') pipVideo.play().catch(() => {});
   else pipVideo.pause();
+}
+
+function startMobilePipSyncLoop() {
+  if (mobilePipSyncTimer || !isAppleMobile()) return;
+  mobilePipSyncTimer = setInterval(() => syncNativeVideoTime(false), 250);
+}
+
+function stopMobilePipSyncLoop() {
+  clearInterval(mobilePipSyncTimer); mobilePipSyncTimer = null;
 }
 
 function supportsSafariPip() {
@@ -300,7 +317,8 @@ async function toggleVideoPip() {
   if (supportsSafariPip()) {
     const leaving = pipVideo.webkitPresentationMode === 'picture-in-picture';
     pipVideo.webkitSetPresentationMode(leaving ? 'inline' : 'picture-in-picture');
-    if (!leaving) syncNativeVideoTime(true);
+    if (leaving) stopMobilePipSyncLoop();
+    else { syncNativeVideoTime(true); startMobilePipSyncLoop(); }
     if (!leaving && isAppleMobile()) showToast('已开启画中画，可返回桌面或切换应用');
     return;
   }
@@ -325,6 +343,9 @@ async function togglePip() {
     showToast(isAppleMobile() ? '请在系统设置中开启“自动画中画”，并使用 Safari 打开' : '当前浏览器不支持悬浮计时');
   }
 }
+window.syncNativeVideoTime = syncNativeVideoTime;
+window.getMobilePipTargetTime = getMobilePipTargetTime;
+
 function updatePip(){
   drawVideoPip();
   syncNativeVideoTime();
@@ -343,4 +364,4 @@ $('#statsBtn').addEventListener('click',()=>{renderStats();openDrawer($('#statsD
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
 $('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});$('#pipBtn').addEventListener('click',togglePip);
-window.addEventListener('beforeunload', stopInterval); applySettings(); renderPresets(); renderStats(); render();
+window.addEventListener('beforeunload', () => { stopInterval(); stopMobilePipSyncLoop(); }); applySettings(); renderPresets(); renderStats(); render();

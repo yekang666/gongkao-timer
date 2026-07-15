@@ -66,7 +66,7 @@ function setMode(mode) {
   $$('.mode-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
   $('#singleSummary').classList.toggle('hidden', mode !== 'single');
   $('#timerHint').textContent = mode === 'single' ? '每完成一题点击“记一题”，自动保存本题用时' : '建议按正式考试节奏完成，计时结束将自动记录';
-  renderPresets(); updateSingleSummary();
+  renderPresets(); updateSingleSummary(); syncMobilePipSource(true);
 }
 
 function startOrPause() {
@@ -75,11 +75,11 @@ function startOrPause() {
   state.status = 'running'; state.autoFinished = false;
   if (!state.startedAt) state.startedAt = new Date().toISOString();
   state.tickBase = { at: performance.now(), remaining: state.remaining, elapsed: state.elapsed };
-  state.interval = setInterval(tick, 200); tick(); render();
+  state.interval = setInterval(tick, 200); tick(); render(); syncNativeVideoTime(true);
 }
 
 function pauseTimer() {
-  tick(); stopInterval(); state.status = 'paused'; render();
+  tick(); stopInterval(); state.status = 'paused'; render(); syncNativeVideoTime(true);
 }
 
 function tick() {
@@ -98,7 +98,7 @@ function tick() {
 
 function resetTimer(confirmNeeded = true) {
   if (confirmNeeded && state.elapsed >= 1 && !confirm('确定重置本轮计时吗？未结束的记录不会保存。')) return;
-  stopInterval(); state.remaining = state.duration; state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.autoFinished = false; render(); updatePip();
+  stopInterval(); state.remaining = state.duration; state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.autoFinished = false; render(); updatePip(); syncMobilePipSource(true);
 }
 
 function requestFinish() {
@@ -111,14 +111,14 @@ function requestFinish() {
 
 function confirmFinish() {
   const questions = Number($('#finishQuestionCount').value) || null;
-  saveSession(false, questions); $('#finishDialog').close(); state.status = 'finished'; render(); showToast('训练记录已保存');
+  saveSession(false, questions); $('#finishDialog').close(); state.status = 'finished'; render(); syncNativeVideoTime(true); showToast('训练记录已保存');
 }
 
 function recordLap() {
   tick(); if (state.elapsed < .5) return;
   const lap = Math.round(state.elapsed); state.lapTimes.push(lap);
   state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: '单题测速', duration: lap, planned: null, startedAt: state.startedAt, endedAt: new Date().toISOString(), overtime: false, questions: 1 });
-  saveRecords(); stopInterval(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; updateSingleSummary(); render(); showToast(`已记录本题：${formatClock(lap)}`);
+  saveRecords(); stopInterval(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; updateSingleSummary(); render(); syncMobilePipSource(true); showToast(`已记录本题：${formatClock(lap)}`);
 }
 
 function saveSession(auto, questions) {
@@ -236,17 +236,7 @@ function keepPipFramesAlive() {
 
 async function ensureVideoPipSource() {
   if (isAppleMobile()) {
-    const source = state.mode === 'single' ? 'pip-stopwatch.mp4' : 'pip-countdown.mp4';
-    if (!pipVideo.src.endsWith(source)) {
-      pipVideo.srcObject = null;
-      pipVideo.src = source;
-      pipVideo.load();
-      await new Promise((resolve, reject) => {
-        pipVideo.addEventListener('loadedmetadata', resolve, { once: true });
-        pipVideo.addEventListener('error', reject, { once: true });
-      });
-    }
-    syncNativeVideoTime(true);
+    await syncMobilePipSource(true);
     ensureNativeCaption();
   } else {
     drawVideoPip();
@@ -255,9 +245,22 @@ async function ensureVideoPipSource() {
       pipStream = sourceCanvas.captureStream(2);
       pipVideo.srcObject = pipStream;
     }
-    keepPipFramesAlive();
+    keepPipFramesAlive(); await pipVideo.play();
   }
-  await pipVideo.play();
+}
+
+async function syncMobilePipSource(force = false) {
+  if (!isAppleMobile()) return;
+  const source = state.mode === 'single' ? 'pip-stopwatch.mp4' : 'pip-countdown.mp4';
+  if (!pipVideo.src.endsWith(source)) {
+    pipVideo.srcObject = null; pipVideo.src = source; pipVideo.load();
+    await new Promise((resolve, reject) => {
+      if (pipVideo.readyState >= 1) { resolve(); return; }
+      pipVideo.addEventListener('loadedmetadata', resolve, { once: true });
+      pipVideo.addEventListener('error', reject, { once: true });
+    });
+  }
+  syncNativeVideoTime(force); updateNativeCaption();
 }
 
 function ensureNativeCaption() {

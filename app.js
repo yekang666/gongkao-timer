@@ -21,7 +21,7 @@ const state = {
   mode: 'mock', preset: PRESETS.mock[0], duration: PRESETS.mock[0].seconds,
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
-  lapTimes: [], records: loadJSON(STORAGE_RECORDS, []),
+  lapTimes: [], pendingLap: null, records: loadJSON(STORAGE_RECORDS, []),
   settings: { sound: true, dark: false, fontSize: 1, warning: 60, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
@@ -116,9 +116,29 @@ function confirmFinish() {
 
 function recordLap() {
   tick(); if (state.elapsed < .5) return;
-  const lap = Math.round(state.elapsed); state.lapTimes.push(lap);
-  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: '单题测速', duration: lap, planned: null, startedAt: state.startedAt, endedAt: new Date().toISOString(), overtime: false, questions: 1 });
-  saveRecords(); stopInterval(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; updateSingleSummary(); render(); syncMobilePipSource(true); showToast(`已记录本题：${formatClock(lap)}`);
+  state.pendingLap = { duration: Math.round(state.elapsed), startedAt: state.startedAt, endedAt: new Date().toISOString() };
+  stopInterval(); state.status = 'paused'; render(); syncNativeVideoTime(true); openSingleModuleDialog();
+}
+
+function openSingleModuleDialog() {
+  $('#singleLapMessage').textContent = `本题用时 ${formatClock(state.pendingLap.duration)}，请选择所属模块。`;
+  const picker = $('#singleModulePicker'); picker.innerHTML = '';
+  PRESETS.section.forEach(module => {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'module-choice'; button.textContent = module.name;
+    button.addEventListener('click', () => saveSingleLap(module.name)); picker.appendChild(button);
+  });
+  $('#singleModuleDialog').showModal();
+}
+
+function saveSingleLap(moduleName) {
+  const lap = state.pendingLap; if (!lap) return;
+  state.lapTimes.push(lap.duration);
+  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: lap.duration, planned: null, startedAt: lap.startedAt, endedAt: lap.endedAt, overtime: false, questions: 1 });
+  state.pendingLap = null; saveRecords(); $('#singleModuleDialog').close(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; updateSingleSummary(); renderStats(); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${formatClock(lap.duration)}`);
+}
+
+function cancelSingleLap() {
+  state.pendingLap = null; state.status = 'idle'; state.elapsed = 0; state.startedAt = null; $('#singleModuleDialog').close(); render(); syncMobilePipSource(true);
 }
 
 function saveSession(auto, questions) {
@@ -360,6 +380,8 @@ $('#customTimeBtn').addEventListener('click', () => $('#customTimePanel').classL
 $('#applyTimeBtn').addEventListener('click', () => { const seconds=(+$('#hoursInput').value||0)*3600+(+$('#minutesInput').value||0)*60+(+$('#secondsInput').value||0);if(seconds<1){showToast('自定义时间不能为零');return}state.preset={name:'自定义训练',seconds};state.duration=seconds;resetTimer(false);renderPresets();$('#customTimePanel').classList.add('hidden'); });
 $('#confirmFinishBtn').addEventListener('click', () => { if (state.status === 'finished' && state.autoFinished) { $('#finishDialog').close(); $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').textContent='保存记录'; } else confirmFinish(); });
 $('#cancelFinishBtn').addEventListener('click', () => $('#finishDialog').close());
+$('#cancelSingleModuleBtn').addEventListener('click', cancelSingleLap);
+$('#singleModuleDialog').addEventListener('cancel', event => { event.preventDefault(); cancelSingleLap(); });
 $('#statsBtn').addEventListener('click',()=>{renderStats();openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>openDrawer($('#settingsDrawer')));$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
 $('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});

@@ -89,11 +89,10 @@ function tick() {
   const delta = (performance.now() - state.tickBase.at) / 1000;
   state.elapsed = state.tickBase.elapsed + delta;
   if (state.mode === 'single') state.remaining = 0;
-  else state.remaining = Math.max(0, state.tickBase.remaining - delta);
-  if (state.mode !== 'single' && state.remaining <= 0 && !state.autoFinished) {
-    state.autoFinished = true; state.remaining = 0; stopInterval(); state.status = 'finished';
-    if (state.settings.sound) playBeep();
-    saveSession(true, getDefaultQuestionCount(), state.mode === 'mock' ? 1 : null); showCompletion('时间到，已自动结束', '本次训练已按设定时间保存。');
+  else {
+    const rawRemaining = state.tickBase.remaining - delta;
+    state.remaining = Math.max(0, rawRemaining);
+    if (rawRemaining <= 0 && !state.autoFinished) { state.autoFinished = true; if (state.settings.sound) playBeep(); syncMobilePipSource(true); }
   }
   render(); updatePip();
 }
@@ -107,9 +106,9 @@ function requestFinish() {
   if (state.elapsed < 1) return;
   if (state.mode === 'single') { finishSpeedSession(); return; }
   pauseTimer();
-  if (state.mode === 'mock') { saveSession(false, null, 1); state.status = 'finished'; render(); syncNativeVideoTime(true); showToast('已保存：1 套卷子'); return; }
+  if (state.mode === 'mock') { finalizeTimedSession(null, 1); return; }
   if (state.preset.name === '数量关系') { openQuantityChoiceDialog(); return; }
-  saveSession(false, SECTION_QUESTION_COUNTS[state.preset.name] || null); state.status = 'finished'; render(); syncNativeVideoTime(true); showToast('训练记录已保存');
+  finalizeTimedSession(SECTION_QUESTION_COUNTS[state.preset.name] || null, null);
 }
 
 function confirmFinish() {
@@ -124,7 +123,14 @@ function openQuantityChoiceDialog() {
 }
 
 function saveQuantitySession(questions) {
-  saveSession(false, questions); $('#finishDialog').close(); resetFinishDialog(); state.status = 'finished'; render(); syncNativeVideoTime(true); showToast(`已保存：数量关系 ${questions} 题`);
+  $('#finishDialog').close(); resetFinishDialog(); finalizeTimedSession(questions, null);
+}
+
+function finalizeTimedSession(questions, papers) {
+  const overtimeSeconds = Math.max(0, state.elapsed - state.duration);
+  saveSession(overtimeSeconds > 0, questions, papers); state.status = 'finished'; render(); syncNativeVideoTime(true);
+  const overtimeText = overtimeSeconds > 0 ? `，超时 ${formatDuration(overtimeSeconds)}` : '';
+  showToast(`${papers ? `已保存：${papers} 套卷子` : '训练记录已保存'}${overtimeText}`);
 }
 
 function finishSpeedSession() {
@@ -166,13 +172,14 @@ function saveSession(auto, questions, papers = null) {
 }
 
 function render() {
-  const displaySeconds = state.mode === 'single' ? state.elapsed : state.remaining;
+  const isOvertime = state.mode !== 'single' && state.autoFinished;
+  const displaySeconds = state.mode === 'single' ? state.elapsed : (isOvertime ? Math.max(0, state.elapsed - state.duration) : state.remaining);
   $('#timerDisplay').textContent = formatClock(displaySeconds);
   $('#sessionTitle').textContent = state.preset.name;
-  const statuses = { idle: '准备开始', running: '计时中', paused: '已暂停', finished: '本轮结束' };
+  const statuses = { idle: '准备开始', running: isOvertime ? '已超时' : '计时中', paused: isOvertime ? '超时暂停' : '已暂停', finished: '本轮结束' };
   $('#sessionStatus').textContent = statuses[state.status]; $('#statusDot').classList.toggle('running', state.status === 'running');
-  const warning = state.mode !== 'single' && state.status === 'running' && state.remaining > 0 && state.remaining <= state.settings.warning;
-  $('#timerDisplay').classList.toggle('warning', warning); $('#timerDisplay').classList.toggle('overtime', state.status === 'finished' && state.autoFinished);
+  const warning = state.mode !== 'single' && state.status === 'running' && !isOvertime && state.remaining > 0 && state.remaining <= state.settings.warning;
+  $('#timerDisplay').classList.toggle('warning', warning); $('#timerDisplay').classList.toggle('overtime', isOvertime);
   $('#startBtn').innerHTML = state.status === 'running' ? 'Ⅱ<span>暂停</span>' : `▶<span>${state.status === 'paused' ? '继续' : '开始'}</span>`;
   $('#finishBtn').innerHTML = state.mode === 'single' ? '✓<span>结束并保存</span>' : '■<span>结束</span>';
   $('#resetBtn').disabled = state.status === 'idle'; $('#finishBtn').disabled = state.status === 'idle';
@@ -231,14 +238,15 @@ function isAppleMobile() {
 }
 
 function drawVideoPip() {
-  const seconds = state.mode === 'single' ? state.elapsed : state.remaining;
+  const isOvertime = state.mode !== 'single' && state.autoFinished;
+  const seconds = state.mode === 'single' ? state.elapsed : (isOvertime ? Math.max(0, state.elapsed - state.duration) : state.remaining);
   pipContext.fillStyle = '#18201b'; pipContext.fillRect(0, 0, pipCanvas.width, pipCanvas.height);
   pipContext.textAlign = 'center'; pipContext.fillStyle = '#a9b8ae'; pipContext.font = '600 30px sans-serif';
   pipContext.fillText(state.preset.name, pipCanvas.width / 2, 82);
-  pipContext.fillStyle = state.status === 'finished' && state.autoFinished ? '#ef756e' : '#f2f5f2';
+  pipContext.fillStyle = isOvertime ? '#ef756e' : '#f2f5f2';
   pipContext.font = '700 92px monospace'; pipContext.fillText(formatClock(seconds), pipCanvas.width / 2, 215);
-  pipContext.fillStyle = '#73ae92'; pipContext.font = '24px sans-serif';
-  pipContext.fillText({ idle:'准备开始', running:'计时中', paused:'已暂停', finished:'本轮结束' }[state.status], pipCanvas.width / 2, 292);
+  pipContext.fillStyle = isOvertime ? '#ef756e' : '#73ae92'; pipContext.font = '24px sans-serif';
+  pipContext.fillText({ idle:'准备开始', running:isOvertime ? '已超时' : '计时中', paused:isOvertime ? '超时暂停' : '已暂停', finished:'本轮结束' }[state.status], pipCanvas.width / 2, 292);
   renderWebGlPip();
 }
 
@@ -291,7 +299,7 @@ async function ensureVideoPipSource() {
 
 async function syncMobilePipSource(force = false) {
   if (!isAppleMobile()) return;
-  const source = state.mode === 'single' ? 'pip-stopwatch.mp4' : 'pip-countdown.mp4';
+  const source = (state.mode === 'single' || state.autoFinished) ? 'pip-stopwatch.mp4' : 'pip-countdown.mp4';
   if (!pipVideo.src.endsWith(source)) {
     pipVideo.srcObject = null; pipVideo.src = source; pipVideo.load();
     await new Promise((resolve, reject) => {
@@ -314,7 +322,8 @@ function ensureNativeCaption() {
 function updateNativeCaption() {
   if (!pipCaptionTrack) return;
   if (pipCaptionCue) pipCaptionTrack.removeCue(pipCaptionCue);
-  const status = { idle:'准备开始', running:'计时中', paused:'已暂停', finished:'本轮结束' }[state.status];
+  const isOvertime = state.mode !== 'single' && state.autoFinished;
+  const status = { idle:'准备开始', running:isOvertime ? '已超时' : '计时中', paused:isOvertime ? '超时暂停' : '已暂停', finished:'本轮结束' }[state.status];
   const Cue = window.VTTCue || window.TextTrackCue;
   if (!Cue) return;
   pipCaptionCue = new Cue(0, Number.MAX_SAFE_INTEGER, `${state.preset.name}  ·  ${status}`);
@@ -323,9 +332,9 @@ function updateNativeCaption() {
 }
 
 function getMobilePipTargetTime() {
-  const displaySeconds = state.mode === 'single' ? state.elapsed : state.remaining;
+  const displaySeconds = state.mode === 'single' ? state.elapsed : (state.autoFinished ? Math.max(0, state.elapsed - state.duration) : state.remaining);
   const rounded = Math.max(0, Math.round(displaySeconds));
-  return state.mode === 'single' ? Math.min(rounded, 10800) : Math.max(0, 10800 - Math.min(rounded, 10800));
+  return (state.mode === 'single' || state.autoFinished) ? Math.min(rounded, 10800) : Math.max(0, 10800 - Math.min(rounded, 10800));
 }
 
 function syncNativeVideoTime(force = false) {
@@ -382,6 +391,8 @@ async function togglePip() {
     showToast(isAppleMobile() ? '请在系统设置中开启“自动画中画”，并使用 Safari 打开' : '当前浏览器不支持悬浮计时');
   }
 }
+window.state = state;
+window.resetTimer = resetTimer;
 window.syncNativeVideoTime = syncNativeVideoTime;
 window.getMobilePipTargetTime = getMobilePipTargetTime;
 

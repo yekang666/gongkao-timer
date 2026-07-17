@@ -88,6 +88,10 @@
   <dialog id="finishDialog">
     <div class="dialog-icon">✓</div><h2 id="dialogTitle">本次训练已完成</h2><p id="dialogMessage"></p>
     <label class="question-input hidden" id="questionInputWrap">完成题数<input id="finishQuestionCount" type="number" min="1" value="1"></label>
+    <div class="quantity-choice hidden" id="quantityChoiceWrap">
+      <button class="module-choice" data-quantity="10" type="button">10 题</button>
+      <button class="module-choice" data-quantity="15" type="button">15 题</button>
+    </div>
     <div class="dialog-actions"><button class="secondary" id="cancelFinishBtn" type="button">取消</button><button class="primary" id="confirmFinishBtn" type="button">保存记录</button></div>
   </dialog>
 

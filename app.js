@@ -16,6 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
+const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section];
 
 const state = {
   mode: 'mock', preset: PRESETS.mock[0], duration: PRESETS.mock[0].seconds,
@@ -121,10 +122,10 @@ function finishSpeedSession() {
 }
 
 function openSpeedSaveDialog() {
-  $('#singleLapMessage').textContent = `本次正计时 ${formatClock(state.pendingSpeed.duration)}，请输入题量并选择专项。`;
+  $('#singleLapMessage').textContent = `本次正计时 ${formatClock(state.pendingSpeed.duration)}，请输入题量并选择分类。`;
   $('#speedQuestionCount').value = '1';
   const picker = $('#singleModulePicker'); picker.innerHTML = '';
-  PRESETS.section.forEach(module => {
+  TRACKING_CATEGORIES.forEach(module => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'module-choice'; button.textContent = module.name;
     button.addEventListener('click', () => saveSpeedSession(module.name)); picker.appendChild(button);
   });
@@ -167,7 +168,7 @@ function renderStats() {
   const today = state.records.filter(r => new Date(r.endedAt).toDateString() === todayKey);
   const week = state.records.filter(r => new Date(r.endedAt) >= weekStart);
   $('#todayDuration').textContent = formatDuration(today.reduce((n,r)=>n+r.duration,0)); $('#weekCount').textContent = `${week.length} 次`; $('#weekDuration').textContent = formatDuration(week.reduce((n,r)=>n+r.duration,0));
-  const modules = PRESETS.section.map(p => p.name); $('#moduleStats').innerHTML = modules.map(name => {
+  const modules = TRACKING_CATEGORIES.map(p => p.name); $('#moduleStats').innerHTML = modules.map(name => {
     const rows = state.records.filter(r => r.module === name), avg = rows.length ? rows.reduce((n,r)=>n+r.duration,0)/rows.length : 0, overtime = rows.filter(r=>r.overtime).length;
     const questionRows = rows.filter(r => r.questions), avgPerQuestion = questionRows.length ? questionRows.reduce((n,r)=>n+r.duration/r.questions,0)/questionRows.length : 0;
     return `<div class="module-row"><strong>${name}</strong><span>${rows.length ? formatDuration(avg) : '暂无记录'}${avgPerQuestion ? ` / 题均 ${formatClock(avgPerQuestion).slice(3)}` : ''}</span><span>${overtime} 次超时</span></div>`;

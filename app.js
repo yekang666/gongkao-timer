@@ -176,7 +176,7 @@ function render() {
   $('#startBtn').innerHTML = state.status === 'running' ? 'Ⅱ<span>暂停</span>' : `▶<span>${state.status === 'paused' ? '继续' : '开始'}</span>`;
   $('#finishBtn').innerHTML = state.mode === 'single' ? '✓<span>结束并保存</span>' : '■<span>结束</span>';
   $('#resetBtn').disabled = state.status === 'idle'; $('#finishBtn').disabled = state.status === 'idle';
-  $$('.preset-button, #customTimeBtn').forEach(el => el.disabled = state.status === 'running');
+  $$('.preset-button').forEach(el => el.disabled = state.status === 'running');
 }
 
 function renderStats() {
@@ -395,8 +395,6 @@ function updatePip(){
 
 $$('.mode-tab').forEach(tab => tab.addEventListener('click', () => setMode(tab.dataset.mode)));
 $('#startBtn').addEventListener('click', startOrPause); $('#resetBtn').addEventListener('click', () => resetTimer(true)); $('#finishBtn').addEventListener('click', requestFinish);
-$('#customTimeBtn').addEventListener('click', () => $('#customTimePanel').classList.toggle('hidden'));
-$('#applyTimeBtn').addEventListener('click', () => { const seconds=(+$('#hoursInput').value||0)*3600+(+$('#minutesInput').value||0)*60+(+$('#secondsInput').value||0);if(seconds<1){showToast('自定义时间不能为零');return}state.preset={name:'自定义训练',seconds};state.duration=seconds;resetTimer(false);renderPresets();$('#customTimePanel').classList.add('hidden'); });
 $('#confirmFinishBtn').addEventListener('click', confirmFinish);
 $('#cancelFinishBtn').addEventListener('click', () => { $('#finishDialog').close(); resetFinishDialog(); render(); syncNativeVideoTime(true); });
 $$('#quantityChoiceWrap [data-quantity]').forEach(button => button.addEventListener('click', () => saveQuantitySession(Number(button.dataset.quantity))));

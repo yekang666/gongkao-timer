@@ -9,7 +9,7 @@ const PRESETS = {
     { name: '判断推理', seconds: 35 * 60 }, { name: '数量关系', seconds: 20 * 60 },
     { name: '政治理论', seconds: 10 * 60 }, { name: '常识判断', seconds: 5 * 60 }
   ],
-  single: [{ name: '单题测速', seconds: 0 }]
+  single: [{ name: '正计时测速', seconds: 0 }]
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -21,7 +21,7 @@ const state = {
   mode: 'mock', preset: PRESETS.mock[0], duration: PRESETS.mock[0].seconds,
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
-  lapTimes: [], pendingLap: null, records: loadJSON(STORAGE_RECORDS, []),
+  pendingSpeed: null, records: loadJSON(STORAGE_RECORDS, []),
   settings: { sound: true, dark: false, fontSize: 1, warning: 60, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
@@ -62,11 +62,11 @@ function selectPreset(preset) {
 function setMode(mode) {
   if (mode === state.mode) return;
   stopInterval(); state.mode = mode; state.preset = PRESETS[mode][0]; state.duration = state.preset.seconds;
-  state.lapTimes = []; resetTimer(false);
+  resetTimer(false);
   $$('.mode-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
   $('#singleSummary').classList.toggle('hidden', mode !== 'single');
-  $('#timerHint').textContent = mode === 'single' ? '每完成一题点击“记一题”，自动保存本题用时' : '建议按正式考试节奏完成，计时结束将自动记录';
-  renderPresets(); updateSingleSummary(); syncMobilePipSource(true);
+  $('#timerHint').textContent = mode === 'single' ? '正计时记录一组刷题训练，结束后填写题量和专项。' : '建议按正式考试节奏完成，计时结束将自动记录';
+  renderPresets(); syncMobilePipSource(true);
 }
 
 function startOrPause() {
@@ -103,7 +103,7 @@ function resetTimer(confirmNeeded = true) {
 
 function requestFinish() {
   if (state.elapsed < 1) return;
-  if (state.mode === 'single') { recordLap(); return; }
+  if (state.mode === 'single') { finishSpeedSession(); return; }
   pauseTimer(); $('#dialogTitle').textContent = '结束本次训练？';
   $('#dialogMessage').textContent = `已训练 ${formatDuration(state.elapsed)}，保存后将计入复盘数据。`;
   $('#questionInputWrap').classList.remove('hidden'); $('#finishDialog').showModal();
@@ -114,31 +114,32 @@ function confirmFinish() {
   saveSession(false, questions); $('#finishDialog').close(); state.status = 'finished'; render(); syncNativeVideoTime(true); showToast('训练记录已保存');
 }
 
-function recordLap() {
+function finishSpeedSession() {
   tick(); if (state.elapsed < .5) return;
-  state.pendingLap = { duration: Math.round(state.elapsed), startedAt: state.startedAt, endedAt: new Date().toISOString() };
-  stopInterval(); state.status = 'paused'; render(); syncNativeVideoTime(true); openSingleModuleDialog();
+  state.pendingSpeed = { duration: Math.round(state.elapsed), startedAt: state.startedAt, endedAt: new Date().toISOString() };
+  stopInterval(); state.status = 'paused'; render(); syncNativeVideoTime(true); openSpeedSaveDialog();
 }
 
-function openSingleModuleDialog() {
-  $('#singleLapMessage').textContent = `本题用时 ${formatClock(state.pendingLap.duration)}，请选择所属模块。`;
+function openSpeedSaveDialog() {
+  $('#singleLapMessage').textContent = `本次正计时 ${formatClock(state.pendingSpeed.duration)}，请输入题量并选择专项。`;
+  $('#speedQuestionCount').value = '1';
   const picker = $('#singleModulePicker'); picker.innerHTML = '';
   PRESETS.section.forEach(module => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'module-choice'; button.textContent = module.name;
-    button.addEventListener('click', () => saveSingleLap(module.name)); picker.appendChild(button);
+    button.addEventListener('click', () => saveSpeedSession(module.name)); picker.appendChild(button);
   });
   $('#singleModuleDialog').showModal();
 }
 
-function saveSingleLap(moduleName) {
-  const lap = state.pendingLap; if (!lap) return;
-  state.lapTimes.push(lap.duration);
-  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: lap.duration, planned: null, startedAt: lap.startedAt, endedAt: lap.endedAt, overtime: false, questions: 1 });
-  state.pendingLap = null; saveRecords(); $('#singleModuleDialog').close(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; updateSingleSummary(); renderStats(); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${formatClock(lap.duration)}`);
+function saveSpeedSession(moduleName) {
+  const session = state.pendingSpeed; if (!session) return;
+  const questions = Math.max(1, Math.floor(Number($('#speedQuestionCount').value) || 1));
+  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, overtime: false, questions });
+  state.pendingSpeed = null; saveRecords(); $('#singleModuleDialog').close(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; renderStats(); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${questions} 题，均时 ${formatClock(session.duration / questions).slice(3)}`);
 }
 
-function cancelSingleLap() {
-  state.pendingLap = null; state.status = 'idle'; state.elapsed = 0; state.startedAt = null; $('#singleModuleDialog').close(); render(); syncMobilePipSource(true);
+function cancelSpeedSession() {
+  state.pendingSpeed = null; state.status = 'idle'; state.elapsed = 0; state.startedAt = null; $('#singleModuleDialog').close(); render(); syncMobilePipSource(true);
 }
 
 function saveSession(auto, questions) {
@@ -156,14 +157,9 @@ function render() {
   const warning = state.mode !== 'single' && state.status === 'running' && state.remaining > 0 && state.remaining <= state.settings.warning;
   $('#timerDisplay').classList.toggle('warning', warning); $('#timerDisplay').classList.toggle('overtime', state.status === 'finished' && state.autoFinished);
   $('#startBtn').innerHTML = state.status === 'running' ? 'Ⅱ<span>暂停</span>' : `▶<span>${state.status === 'paused' ? '继续' : '开始'}</span>`;
-  $('#finishBtn').innerHTML = state.mode === 'single' ? '✓<span>记一题</span>' : '■<span>结束</span>';
+  $('#finishBtn').innerHTML = state.mode === 'single' ? '✓<span>结束并保存</span>' : '■<span>结束</span>';
   $('#resetBtn').disabled = state.status === 'idle'; $('#finishBtn').disabled = state.status === 'idle';
   $$('.preset-button, #customTimeBtn').forEach(el => el.disabled = state.status === 'running');
-}
-
-function updateSingleSummary() {
-  const count = state.lapTimes.length, avg = count ? state.lapTimes.reduce((a,b)=>a+b,0) / count : 0;
-  $('#questionCount').textContent = count; $('#questionAverage').textContent = formatClock(avg).slice(3);
 }
 
 function renderStats() {
@@ -173,9 +169,10 @@ function renderStats() {
   $('#todayDuration').textContent = formatDuration(today.reduce((n,r)=>n+r.duration,0)); $('#weekCount').textContent = `${week.length} 次`; $('#weekDuration').textContent = formatDuration(week.reduce((n,r)=>n+r.duration,0));
   const modules = PRESETS.section.map(p => p.name); $('#moduleStats').innerHTML = modules.map(name => {
     const rows = state.records.filter(r => r.module === name), avg = rows.length ? rows.reduce((n,r)=>n+r.duration,0)/rows.length : 0, overtime = rows.filter(r=>r.overtime).length;
-    return `<div class="module-row"><strong>${name}</strong><span>${rows.length ? formatDuration(avg) : '暂无记录'}</span><span>${overtime} 次超时</span></div>`;
+    const questionRows = rows.filter(r => r.questions), avgPerQuestion = questionRows.length ? questionRows.reduce((n,r)=>n+r.duration/r.questions,0)/questionRows.length : 0;
+    return `<div class="module-row"><strong>${name}</strong><span>${rows.length ? formatDuration(avg) : '暂无记录'}${avgPerQuestion ? ` / 题均 ${formatClock(avgPerQuestion).slice(3)}` : ''}</span><span>${overtime} 次超时</span></div>`;
   }).join('');
-  $('#historyList').innerHTML = state.records.length ? state.records.slice(0,30).map(r => `<div class="history-row"><div class="history-main"><strong>${r.module}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.questions ? ` · ${r.questions} 题` : ''}${r.overtime ? ' · 超时' : ''}</span></div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${r.id}" title="删除记录">×</button></div>`).join('') : '<div class="empty-state">完成一次训练后，记录会显示在这里</div>';
+  $('#historyList').innerHTML = state.records.length ? state.records.slice(0,30).map(r => `<div class="history-row"><div class="history-main"><strong>${r.module}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${r.overtime ? ' · 超时' : ''}</span></div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${r.id}" title="删除记录">×</button></div>`).join('') : '<div class="empty-state">完成一次训练后，记录会显示在这里</div>';
   $$('.delete-record').forEach(btn => btn.addEventListener('click', () => { state.records = state.records.filter(r => r.id !== btn.dataset.id); saveRecords(); renderStats(); }));
 }
 
@@ -380,8 +377,8 @@ $('#customTimeBtn').addEventListener('click', () => $('#customTimePanel').classL
 $('#applyTimeBtn').addEventListener('click', () => { const seconds=(+$('#hoursInput').value||0)*3600+(+$('#minutesInput').value||0)*60+(+$('#secondsInput').value||0);if(seconds<1){showToast('自定义时间不能为零');return}state.preset={name:'自定义训练',seconds};state.duration=seconds;resetTimer(false);renderPresets();$('#customTimePanel').classList.add('hidden'); });
 $('#confirmFinishBtn').addEventListener('click', () => { if (state.status === 'finished' && state.autoFinished) { $('#finishDialog').close(); $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').textContent='保存记录'; } else confirmFinish(); });
 $('#cancelFinishBtn').addEventListener('click', () => $('#finishDialog').close());
-$('#cancelSingleModuleBtn').addEventListener('click', cancelSingleLap);
-$('#singleModuleDialog').addEventListener('cancel', event => { event.preventDefault(); cancelSingleLap(); });
+$('#cancelSingleModuleBtn').addEventListener('click', cancelSpeedSession);
+$('#singleModuleDialog').addEventListener('cancel', event => { event.preventDefault(); cancelSpeedSession(); });
 $('#statsBtn').addEventListener('click',()=>{renderStats();openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>openDrawer($('#settingsDrawer')));$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
 $('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});

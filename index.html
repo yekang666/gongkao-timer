@@ -89,9 +89,9 @@
 
   <dialog id="singleModuleDialog">
     <div class="dialog-icon">✓</div><h2>保存正计时记录</h2><p id="singleLapMessage"></p>
-    <label class="question-input speed-count-input">刷题数量<input id="speedQuestionCount" type="number" min="1" step="1" value="1"></label>
-    <div class="module-picker" id="singleModulePicker"></div>
-    <div class="dialog-actions"><button class="secondary" id="cancelSingleModuleBtn" type="button">取消</button></div>
+    <label class="question-input speed-count-input" id="speedCountWrap">刷题数量<input id="speedQuestionCount" type="number" min="1" step="1" value="1"></label>
+    <div class="module-picker hidden" id="singleModulePicker"></div>
+    <div class="dialog-actions"><button class="secondary" id="cancelSingleModuleBtn" type="button">取消</button><button class="primary" id="nextSpeedStepBtn" type="button">下一步</button></div>
   </dialog>
 
   <div class="pip-source" aria-hidden="true">

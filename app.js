@@ -161,25 +161,38 @@ function finishSpeedSession() {
 }
 
 function openSpeedSaveDialog() {
-  $('#singleLapMessage').textContent = `本次正计时 ${formatClock(state.pendingSpeed.duration)}，请输入题量并选择分类。`;
-  $('#speedQuestionCount').value = '1';
+  $('#singleLapMessage').textContent = `本次正计时 ${formatClock(state.pendingSpeed.duration)}，请先输入刷题数量。`;
+  $('#speedQuestionCount').value = '1'; $('#speedCountWrap').classList.remove('hidden'); $('#singleModulePicker').classList.add('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
+  $('#singleModuleDialog').showModal();
+}
+
+function showSpeedTypeStep() {
+  const questions = Math.floor(Number($('#speedQuestionCount').value) || 0);
+  if (questions < 1) { showToast('请先输入刷题数量'); $('#speedQuestionCount').focus(); return; }
+  state.pendingSpeed.questions = questions;
+  $('#singleLapMessage').textContent = `已填写 ${questions} 题，请选择本次刷题类型。`;
+  $('#speedCountWrap').classList.add('hidden'); $('#nextSpeedStepBtn').classList.add('hidden');
   const picker = $('#singleModulePicker'); picker.innerHTML = '';
   TRACKING_CATEGORIES.forEach(moduleName => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'module-choice'; button.textContent = moduleName;
     button.addEventListener('click', () => saveSpeedSession(moduleName)); picker.appendChild(button);
   });
-  $('#singleModuleDialog').showModal();
+  picker.classList.remove('hidden');
 }
 
 function saveSpeedSession(moduleName) {
   const session = state.pendingSpeed; if (!session) return;
-  const questions = Math.max(1, Math.floor(Number($('#speedQuestionCount').value) || 1));
+  const questions = session.questions || 1;
   state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, overtime: false, questions });
-  state.pendingSpeed = null; saveRecords(); $('#singleModuleDialog').close(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; renderStats(); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${questions} 题，均时 ${formatClock(session.duration / questions).slice(3)}`);
+  state.pendingSpeed = null; saveRecords(); $('#singleModuleDialog').close(); resetSpeedSaveDialog(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; renderStats(); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${questions} 题，均时 ${formatClock(session.duration / questions).slice(3)}`);
+}
+
+function resetSpeedSaveDialog() {
+  $('#speedCountWrap').classList.remove('hidden'); $('#singleModulePicker').classList.add('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
 }
 
 function cancelSpeedSession() {
-  state.pendingSpeed = null; state.status = 'idle'; state.elapsed = 0; state.startedAt = null; $('#singleModuleDialog').close(); render(); syncMobilePipSource(true);
+  state.pendingSpeed = null; state.status = 'idle'; state.elapsed = 0; state.startedAt = null; $('#singleModuleDialog').close(); resetSpeedSaveDialog(); render(); syncMobilePipSource(true);
 }
 
 function getDefaultQuestionCount() {
@@ -469,6 +482,7 @@ $('#confirmFinishBtn').addEventListener('click', confirmFinish);
 $('#cancelFinishBtn').addEventListener('click', () => { $('#finishDialog').close(); resetFinishDialog(); render(); syncNativeVideoTime(true); });
 $$('#quantityChoiceWrap [data-quantity]').forEach(button => button.addEventListener('click', () => saveQuantitySession(Number(button.dataset.quantity))));
 $('#cancelSingleModuleBtn').addEventListener('click', cancelSpeedSession);
+$('#nextSpeedStepBtn').addEventListener('click', showSpeedTypeStep);
 $('#singleModuleDialog').addEventListener('cancel', event => { event.preventDefault(); cancelSpeedSession(); });
 $('#statsBtn').addEventListener('click',()=>{renderStats();openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>openDrawer($('#settingsDrawer')));$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});

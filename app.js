@@ -33,9 +33,26 @@ function loadJSON(key, fallback) {
 
 function saveSettings() { localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(state.settings)); }
 function saveRecords() { localStorage.setItem(STORAGE_RECORDS, JSON.stringify(state.records)); }
+function getSectionDurations() {
+  const section = state.settings.customDurations?.section || {};
+  return Object.fromEntries(PRESETS.section.map(preset => [preset.name, Number.isFinite(section[preset.name]) && section[preset.name] > 0 ? Math.round(section[preset.name]) : preset.seconds]));
+}
 function applyCustomDurations() {
-  const sectionDurations = state.settings.customDurations?.section || {};
-  PRESETS.section.forEach(preset => { if (Number.isFinite(sectionDurations[preset.name]) && sectionDurations[preset.name] > 0) preset.seconds = Math.round(sectionDurations[preset.name]); });
+  const sectionDurations = getSectionDurations();
+  state.settings.customDurations = { ...(state.settings.customDurations || {}), section: sectionDurations };
+  PRESETS.section.forEach(preset => { preset.seconds = sectionDurations[preset.name]; });
+}
+function renderSectionTimeSettings() {
+  const grid = $('#sectionTimeGrid'); if (!grid) return;
+  grid.innerHTML = PRESETS.section.map(preset => `<label class="section-time-row"><span>${preset.name}</span><input data-section-time="${preset.name}" type="number" min="1" max="300" step="1" value="${Math.round(preset.seconds / 60)}"><em>分钟</em></label>`).join('');
+}
+function saveSectionTimes() {
+  const section = {};
+  $$('[data-section-time]').forEach(input => { const minutes = Math.max(1, Math.floor(Number(input.value) || 0)); section[input.dataset.sectionTime] = minutes * 60; input.value = minutes; });
+  state.settings.customDurations = { ...(state.settings.customDurations || {}), section };
+  applyCustomDurations(); saveSettings();
+  if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; resetTimer(false); }
+  renderSectionTimeSettings(); renderPresets(); render(); showToast('专项时间已保存');
 }
 function formatClock(total) {
   total = Math.max(0, Math.round(total));
@@ -244,7 +261,7 @@ async function importDataFile(file) {
     state.settings = data.settings; state.records = data.records;
     saveSettings(); saveRecords(); applyCustomDurations();
     if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; resetTimer(false); }
-    applySettings(); renderPresets(); renderStats(); render(); showToast('数据已导入');
+    applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); render(); showToast('数据已导入');
   } catch (error) { showToast(`导入失败：${error.message}`); }
 }
 
@@ -457,6 +474,7 @@ $('#statsBtn').addEventListener('click',()=>{renderStats();openDrawer($('#statsD
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
 $('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
+$('#saveSectionTimesBtn').addEventListener('click', saveSectionTimes);
 $('#exportDataBtn').addEventListener('click', exportData); $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click()); $('#importDataInput').addEventListener('change', e => { importDataFile(e.target.files[0]); e.target.value = ''; });
 $('#pipBtn').addEventListener('click',togglePip);
-window.addEventListener('beforeunload', () => { stopInterval(); stopMobilePipSyncLoop(); }); applyCustomDurations(); applySettings(); renderPresets(); renderStats(); render();
+window.addEventListener('beforeunload', () => { stopInterval(); stopMobilePipSyncLoop(); }); applyCustomDurations(); applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); render();

@@ -71,6 +71,7 @@
       <label class="setting-row"><span><strong>深色专注模式</strong><small>降低环境光干扰</small></span><input id="themeToggle" type="checkbox"></label>
       <label class="setting-block"><span><strong>计时数字大小</strong><output id="fontSizeOutput">标准</output></span><input id="fontSizeRange" type="range" min="0" max="2" step="1" value="1"></label>
       <label class="setting-block"><span><strong>倒计时预警</strong><output id="warningOutput">最后 1 分钟</output></span><input id="warningRange" type="range" min="10" max="300" step="10" value="60"></label>
+      <div class="setting-block section-time-settings"><span><strong>专项时间配置</strong><small>设置专项模式各模块倒计时时长</small></span><div class="section-time-grid" id="sectionTimeGrid"></div><button class="primary" id="saveSectionTimesBtn" type="button">保存专项时间</button></div>
       <div class="setting-block data-tools"><span><strong>数据管理</strong><small>导出或导入计时配置和复盘记录</small></span><div class="data-actions"><button class="secondary" id="exportDataBtn" type="button">导出数据</button><button class="primary" id="importDataBtn" type="button">导入数据</button><input class="hidden" id="importDataInput" type="file" accept="application/json,.json"></div></div>
     </div>
     <div class="privacy-note"><strong>数据仅保存在当前设备</strong><p>训练记录、专项时间配置和个人设置使用浏览器本地存储，不会上传。</p></div>

@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section];
+const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 
 const state = {
@@ -33,6 +33,10 @@ function loadJSON(key, fallback) {
 
 function saveSettings() { localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(state.settings)); }
 function saveRecords() { localStorage.setItem(STORAGE_RECORDS, JSON.stringify(state.records)); }
+function applyCustomDurations() {
+  const sectionDurations = state.settings.customDurations?.section || {};
+  PRESETS.section.forEach(preset => { if (Number.isFinite(sectionDurations[preset.name]) && sectionDurations[preset.name] > 0) preset.seconds = Math.round(sectionDurations[preset.name]); });
+}
 function formatClock(total) {
   total = Math.max(0, Math.round(total));
   const h = Math.floor(total / 3600), m = Math.floor(total % 3600 / 60), s = total % 60;
@@ -143,9 +147,9 @@ function openSpeedSaveDialog() {
   $('#singleLapMessage').textContent = `本次正计时 ${formatClock(state.pendingSpeed.duration)}，请输入题量并选择分类。`;
   $('#speedQuestionCount').value = '1';
   const picker = $('#singleModulePicker'); picker.innerHTML = '';
-  TRACKING_CATEGORIES.forEach(module => {
-    const button = document.createElement('button'); button.type = 'button'; button.className = 'module-choice'; button.textContent = module.name;
-    button.addEventListener('click', () => saveSpeedSession(module.name)); picker.appendChild(button);
+  TRACKING_CATEGORIES.forEach(moduleName => {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'module-choice'; button.textContent = moduleName;
+    button.addEventListener('click', () => saveSpeedSession(moduleName)); picker.appendChild(button);
   });
   $('#singleModuleDialog').showModal();
 }
@@ -191,7 +195,7 @@ function renderStats() {
   const today = state.records.filter(r => new Date(r.endedAt).toDateString() === todayKey);
   const week = state.records.filter(r => new Date(r.endedAt) >= weekStart);
   $('#todayDuration').textContent = formatDuration(today.reduce((n,r)=>n+r.duration,0)); $('#weekCount').textContent = `${week.length} 次`; $('#weekDuration').textContent = formatDuration(week.reduce((n,r)=>n+r.duration,0));
-  const modules = TRACKING_CATEGORIES.map(p => p.name); $('#moduleStats').innerHTML = modules.map(name => {
+  const modules = TRACKING_CATEGORIES; $('#moduleStats').innerHTML = modules.map(name => {
     const rows = state.records.filter(r => r.module === name), avg = rows.length ? rows.reduce((n,r)=>n+r.duration,0)/rows.length : 0, overtime = rows.filter(r=>r.overtime).length;
     const questionRows = rows.filter(r => r.questions), avgPerQuestion = questionRows.length ? questionRows.reduce((n,r)=>n+r.duration/r.questions,0)/questionRows.length : 0;
     const paperRows = rows.filter(r => r.papers), paperText = paperRows.length ? ` / ${paperRows.reduce((n,r)=>n+r.papers,0)} 套` : '';
@@ -206,6 +210,42 @@ function applySettings() {
   const sizes = ['clamp(4.5rem,9vw,8rem)','clamp(5rem,11vw,9.5rem)','clamp(5.5rem,13vw,11rem)']; document.documentElement.style.setProperty('--timer-size', sizes[state.settings.fontSize]);
   $('#soundToggle').checked = state.settings.sound; $('#themeToggle').checked = state.settings.dark; $('#fontSizeRange').value = state.settings.fontSize; $('#warningRange').value = state.settings.warning;
   $('#fontSizeOutput').textContent = ['紧凑','标准','特大'][state.settings.fontSize]; $('#warningOutput').textContent = `最后 ${state.settings.warning < 60 ? state.settings.warning + ' 秒' : state.settings.warning / 60 + ' 分钟'}`;
+}
+
+function buildExportData() {
+  const sectionDurations = Object.fromEntries(PRESETS.section.map(preset => [preset.name, preset.seconds]));
+  return { version: 1, exportedAt: new Date().toISOString(), settings: { ...state.settings, customDurations: { ...(state.settings.customDurations || {}), section: sectionDurations } }, records: state.records };
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(buildExportData(), null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob), link = document.createElement('a');
+  link.href = url; link.download = `gongkao-timer-data-${new Date().toISOString().slice(0,10)}.json`; link.click(); URL.revokeObjectURL(url);
+  showToast('数据已导出');
+}
+
+function normalizeImportedData(data) {
+  if (!data || typeof data !== 'object') throw new Error('文件格式不正确');
+  const importedSettings = data.settings && typeof data.settings === 'object' ? data.settings : {};
+  const importedRecords = Array.isArray(data.records) ? data.records : [];
+  const section = importedSettings.customDurations?.section || data.sectionDurations || {};
+  const customDurations = { ...(importedSettings.customDurations || {}), section: {} };
+  PRESETS.section.forEach(preset => {
+    const seconds = Number(section[preset.name]);
+    customDurations.section[preset.name] = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : preset.seconds;
+  });
+  return { settings: { ...state.settings, ...importedSettings, customDurations }, records: importedRecords.filter(record => record && typeof record === 'object') };
+}
+
+async function importDataFile(file) {
+  if (!file) return;
+  try {
+    const data = normalizeImportedData(JSON.parse(await file.text()));
+    state.settings = data.settings; state.records = data.records;
+    saveSettings(); saveRecords(); applyCustomDurations();
+    if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; resetTimer(false); }
+    applySettings(); renderPresets(); renderStats(); render(); showToast('数据已导入');
+  } catch (error) { showToast(`导入失败：${error.message}`); }
 }
 
 function playBeep() { try { const ctx = new AudioContext(); [0,.2,.4].forEach(delay => { const o=ctx.createOscillator(),g=ctx.createGain(); o.frequency.value=760;o.connect(g);g.connect(ctx.destination);g.gain.setValueAtTime(.18,ctx.currentTime+delay);g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+delay+.12);o.start(ctx.currentTime+delay);o.stop(ctx.currentTime+delay+.13); }); } catch {} }
@@ -393,6 +433,8 @@ async function togglePip() {
 }
 window.state = state;
 window.resetTimer = resetTimer;
+window.buildExportData = buildExportData;
+window.normalizeImportedData = normalizeImportedData;
 window.syncNativeVideoTime = syncNativeVideoTime;
 window.getMobilePipTargetTime = getMobilePipTargetTime;
 
@@ -414,5 +456,7 @@ $('#singleModuleDialog').addEventListener('cancel', event => { event.preventDefa
 $('#statsBtn').addEventListener('click',()=>{renderStats();openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>openDrawer($('#settingsDrawer')));$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
 $('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
-$('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});$('#pipBtn').addEventListener('click',togglePip);
-window.addEventListener('beforeunload', () => { stopInterval(); stopMobilePipSyncLoop(); }); applySettings(); renderPresets(); renderStats(); render();
+$('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
+$('#exportDataBtn').addEventListener('click', exportData); $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click()); $('#importDataInput').addEventListener('change', e => { importDataFile(e.target.files[0]); e.target.value = ''; });
+$('#pipBtn').addEventListener('click',togglePip);
+window.addEventListener('beforeunload', () => { stopInterval(); stopMobilePipSyncLoop(); }); applyCustomDurations(); applySettings(); renderPresets(); renderStats(); render();

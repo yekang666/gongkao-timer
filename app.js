@@ -42,15 +42,23 @@ function toNonNegativeInt(value) {
   return Number.isFinite(number) && number >= 0 ? number : null;
 }
 
+function toScore(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 && number <= 100 ? Math.round(number * 10) / 10 : null;
+}
+
 function normalizeRecords(records) {
   if (!Array.isArray(records)) return [];
   return records.filter(record => record && typeof record === 'object').map(record => {
     const questions = toPositiveInt(record.questions);
     const correct = toNonNegativeInt(record.correct);
+    const score = toScore(record.score);
     return {
       ...record,
       questions,
-      correct: questions && correct !== null ? Math.min(correct, questions) : null
+      correct: questions && correct !== null ? Math.min(correct, questions) : null,
+      score
     };
   });
 }
@@ -94,6 +102,10 @@ function formatAccuracy(correct, questions) {
   const rounded = Math.round(rate * 10) / 10;
   return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}%`;
 }
+function formatScore(score) {
+  if (!Number.isFinite(score)) return '暂无';
+  return `${Number.isInteger(score) ? score : score.toFixed(1)} 分`;
+}
 function hasAccuracy(record) {
   return toPositiveInt(record.questions) && toNonNegativeInt(record.correct) !== null;
 }
@@ -101,6 +113,10 @@ function getAccuracyTotals(records) {
   return records.filter(hasAccuracy).reduce((totals, record) => {
     totals.questions += toPositiveInt(record.questions); totals.correct += toNonNegativeInt(record.correct); return totals;
   }, { questions: 0, correct: 0 });
+}
+function getScoreAverage(records) {
+  const scores = records.map(record => toScore(record.score)).filter(Number.isFinite);
+  return scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null;
 }
 
 function renderPresets() {
@@ -165,7 +181,7 @@ function requestFinish() {
   if (state.elapsed < 1) return;
   if (state.mode === 'single') { finishSpeedSession(); return; }
   pauseTimer();
-  if (state.mode === 'mock') { openCorrectInputDialog(null, { papers: 1, editableQuestions: true }); return; }
+  if (state.mode === 'mock') { openCorrectInputDialog(null, { papers: 1, score: true }); return; }
   if (state.preset.name === '数量关系') { openQuantityChoiceDialog(); return; }
   openCorrectInputDialog(SECTION_QUESTION_COUNTS[state.preset.name] || null);
 }
@@ -178,7 +194,7 @@ function confirmFinish() {
 function openQuantityChoiceDialog() {
   $('#dialogTitle').textContent = '选择数量关系题量';
   $('#dialogMessage').textContent = `本次训练 ${formatDuration(state.elapsed)}，请选择本组数量关系题量。`;
-  $('#questionInputWrap').classList.add('hidden'); $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.add('hidden');
+  $('#scoreInputWrap').classList.add('hidden'); $('#questionInputWrap').classList.add('hidden'); $('#correctInputWrap').classList.add('hidden'); $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.add('hidden');
   $('#quantityChoiceWrap').classList.remove('hidden'); $('#finishDialog').showModal();
 }
 
@@ -187,38 +203,46 @@ function saveQuantitySession(questions) {
 }
 
 function openCorrectInputDialog(questions, options = {}) {
-  if (!questions && !options.editableQuestions) { finalizeTimedSession(null, null, null); return; }
-  state.pendingTimed = { step: 'correct', questions, papers: options.papers ?? null, editableQuestions: Boolean(options.editableQuestions) };
-  $('#dialogTitle').textContent = options.editableQuestions ? '填写本次正确率' : '填写正确数量';
-  $('#dialogMessage').textContent = options.editableQuestions ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入完成题数和正确数量。` : `本次共 ${questions} 题，请输入做对的题数。`;
+  if (!questions && !options.editableQuestions && !options.score) { finalizeTimedSession(null, null, null); return; }
+  state.pendingTimed = { step: 'correct', questions, papers: options.papers ?? null, editableQuestions: Boolean(options.editableQuestions), score: Boolean(options.score) };
+  $('#dialogTitle').textContent = options.score ? '填写本次分数' : (options.editableQuestions ? '填写本次正确率' : '填写正确数量');
+  $('#dialogMessage').textContent = options.score ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入本次得分。` : (options.editableQuestions ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入完成题数和正确数量。` : `本次共 ${questions} 题，请输入做对的题数。`);
+  $('#finishScore').value = '';
   $('#finishQuestionCount').value = questions ? String(questions) : '';
   $('#finishCorrectCount').max = questions ? String(questions) : '';
   $('#finishCorrectCount').value = questions ? String(questions) : '';
+  $('#scoreInputWrap').classList.toggle('hidden', !options.score);
   $('#questionInputWrap').classList.toggle('hidden', !options.editableQuestions);
-  $('#quantityChoiceWrap').classList.add('hidden'); $('#correctInputWrap').classList.remove('hidden');
+  $('#quantityChoiceWrap').classList.add('hidden'); $('#correctInputWrap').classList.toggle('hidden', options.score);
   $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').textContent = '保存记录'; $('#finishDialog').showModal();
-  (options.editableQuestions ? $('#finishQuestionCount') : $('#finishCorrectCount')).focus();
+  (options.score ? $('#finishScore') : (options.editableQuestions ? $('#finishQuestionCount') : $('#finishCorrectCount'))).focus();
 }
 
 function saveTimedCorrectSession() {
   let questions = state.pendingTimed.questions;
+  let score = null;
+  if (state.pendingTimed.score) {
+    score = toScore($('#finishScore').value);
+    if (score === null) { showToast('分数需在 0 到 100 之间'); $('#finishScore').focus(); return; }
+  }
   if (state.pendingTimed.editableQuestions) {
     questions = toPositiveInt($('#finishQuestionCount').value);
     if (!questions) { showToast('请填写完成题数'); $('#finishQuestionCount').focus(); return; }
     $('#finishCorrectCount').max = String(questions);
   }
-  const correct = toNonNegativeInt($('#finishCorrectCount').value);
-  if (correct === null || correct > questions) { showToast(`正确数量需在 0 到 ${questions} 之间`); $('#finishCorrectCount').focus(); return; }
+  const correct = state.pendingTimed.score ? null : toNonNegativeInt($('#finishCorrectCount').value);
+  if (!state.pendingTimed.score && (correct === null || correct > questions)) { showToast(`正确数量需在 0 到 ${questions} 之间`); $('#finishCorrectCount').focus(); return; }
   const papers = state.pendingTimed.papers;
-  state.pendingTimed = null; $('#finishDialog').close(); resetFinishDialog(); finalizeTimedSession(questions, papers, correct);
+  state.pendingTimed = null; $('#finishDialog').close(); resetFinishDialog(); finalizeTimedSession(questions, papers, correct, score);
 }
 
-function finalizeTimedSession(questions, papers, correct = null) {
+function finalizeTimedSession(questions, papers, correct = null, score = null) {
   const overtimeSeconds = Math.max(0, state.elapsed - state.duration);
-  saveSession(overtimeSeconds > 0, questions, papers, correct); state.status = 'finished'; render(); syncNativeVideoTime(true);
+  saveSession(overtimeSeconds > 0, questions, papers, correct, score); state.status = 'finished'; render(); syncNativeVideoTime(true);
   const overtimeText = overtimeSeconds > 0 ? `，超时 ${formatDuration(overtimeSeconds)}` : '';
   const accuracyText = questions && correct !== null ? `，正确率 ${formatAccuracy(correct, questions)}` : '';
-  showToast(`${papers ? `已保存：${papers} 套卷子` : '训练记录已保存'}${accuracyText}${overtimeText}`);
+  const scoreText = score !== null ? `，分数 ${formatScore(score)}` : '';
+  showToast(`${papers ? `已保存：${papers} 套卷子` : '训练记录已保存'}${scoreText}${accuracyText}${overtimeText}`);
 }
 
 function finishSpeedSession() {
@@ -284,9 +308,9 @@ function getDefaultQuestionCount() {
   return state.mode === 'section' ? (SECTION_QUESTION_COUNTS[state.preset.name] || null) : null;
 }
 
-function saveSession(auto, questions, papers = null, correct = null) {
+function saveSession(auto, questions, papers = null, correct = null, score = null) {
   if (state.elapsed < 1) return;
-  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt: new Date().toISOString(), overtime: auto || state.elapsed > state.duration, questions, papers, correct });
+  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt: new Date().toISOString(), overtime: auto || state.elapsed > state.duration, questions, papers, correct, score });
   state.records = state.records.slice(0, 500); saveRecords(); renderStats();
 }
 
@@ -310,18 +334,22 @@ function renderStats() {
   const today = state.records.filter(r => new Date(r.endedAt).toDateString() === todayKey);
   const week = state.records.filter(r => new Date(r.endedAt) >= weekStart);
   const weekAccuracy = getAccuracyTotals(week);
-  $('#todayDuration').textContent = formatDuration(today.reduce((n,r)=>n+r.duration,0)); $('#weekCount').textContent = `${week.length} 次`; $('#weekDuration').textContent = formatDuration(week.reduce((n,r)=>n+r.duration,0)); $('#weekAccuracy').textContent = formatAccuracy(weekAccuracy.correct, weekAccuracy.questions);
+  const weekScore = getScoreAverage(week.filter(r => r.mode === 'mock'));
+  $('#todayDuration').textContent = formatDuration(today.reduce((n,r)=>n+r.duration,0)); $('#weekCount').textContent = `${week.length} 次`; $('#weekDuration').textContent = formatDuration(week.reduce((n,r)=>n+r.duration,0)); $('#weekAccuracy').textContent = formatAccuracy(weekAccuracy.correct, weekAccuracy.questions); $('#weekScore').textContent = formatScore(weekScore);
   const modules = TRACKING_CATEGORIES; $('#moduleStats').innerHTML = modules.map(name => {
     const rows = state.records.filter(r => r.module === name), avg = rows.length ? rows.reduce((n,r)=>n+r.duration,0)/rows.length : 0, overtime = rows.filter(r=>r.overtime).length;
     const questionRows = rows.filter(r => r.questions), avgPerQuestion = questionRows.length ? questionRows.reduce((n,r)=>n+r.duration/r.questions,0)/questionRows.length : 0;
     const accuracy = getAccuracyTotals(rows);
+    const avgScore = getScoreAverage(rows);
     const paperRows = rows.filter(r => r.papers), paperText = paperRows.length ? ` / ${paperRows.reduce((n,r)=>n+r.papers,0)} 套` : '';
+    const scoreText = avgScore !== null ? ` / 均分 ${formatScore(avgScore)}` : '';
     const accuracyText = accuracy.questions ? ` / ${accuracy.correct}/${accuracy.questions} 正确 / 正确率 ${formatAccuracy(accuracy.correct, accuracy.questions)}` : '';
-    return `<div class="module-row"><strong>${name}</strong><span>${rows.length ? formatDuration(avg) : '暂无记录'}${paperText}${avgPerQuestion ? ` / 题均 ${formatClock(avgPerQuestion).slice(3)}` : ''}${accuracyText}</span><span>${overtime} 次超时</span></div>`;
+    return `<div class="module-row"><strong>${name}</strong><span>${rows.length ? formatDuration(avg) : '暂无记录'}${paperText}${scoreText}${avgPerQuestion ? ` / 题均 ${formatClock(avgPerQuestion).slice(3)}` : ''}${accuracyText}</span><span>${overtime} 次超时</span></div>`;
   }).join('');
   $('#historyList').innerHTML = state.records.length ? state.records.slice(0,30).map(r => {
     const accuracyText = hasAccuracy(r) ? ` · 正确 ${r.correct}/${r.questions} · 正确率 ${formatAccuracy(r.correct, r.questions)}` : '';
-    return `<div class="history-row"><div class="history-main"><strong>${r.module}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}${r.overtime ? ' · 超时' : ''}</span></div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${r.id}" title="删除记录">×</button></div>`;
+    const scoreText = toScore(r.score) !== null ? ` · ${formatScore(toScore(r.score))}` : '';
+    return `<div class="history-row"><div class="history-main"><strong>${r.module}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}${r.overtime ? ' · 超时' : ''}</span></div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${r.id}" title="删除记录">×</button></div>`;
   }).join('') : '<div class="empty-state">完成一次训练后，记录会显示在这里</div>';
   $$('.delete-record').forEach(btn => btn.addEventListener('click', () => { if (!confirm('确定删除这条训练记录吗？此操作无法撤销。')) return; state.records = state.records.filter(r => r.id !== btn.dataset.id); saveRecords(); renderStats(); }));
 }
@@ -373,7 +401,7 @@ function playBeep() { try { const ctx = new AudioContext(); [0,.2,.4].forEach(de
 function stopInterval() { clearInterval(state.interval); state.interval = null; }
 function showToast(message) { const el=$('#toast'); el.textContent=message;el.classList.remove('hidden');clearTimeout(el._timer);el._timer=setTimeout(()=>el.classList.add('hidden'),2200); }
 function resetFinishDialog() {
-  $('#questionInputWrap').classList.add('hidden'); $('#correctInputWrap').classList.add('hidden'); $('#quantityChoiceWrap').classList.add('hidden');
+  $('#scoreInputWrap').classList.add('hidden'); $('#questionInputWrap').classList.add('hidden'); $('#correctInputWrap').classList.add('hidden'); $('#quantityChoiceWrap').classList.add('hidden');
   $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').textContent = '保存记录';
 }
 function showCompletion(title,message){ resetFinishDialog(); $('#dialogTitle').textContent=title;$('#dialogMessage').textContent=message;$('#cancelFinishBtn').classList.add('hidden');$('#confirmFinishBtn').textContent='知道了';$('#finishDialog').showModal(); }

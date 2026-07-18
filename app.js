@@ -54,8 +54,10 @@ function normalizeRecords(records) {
     const questions = toPositiveInt(record.questions);
     const correct = toNonNegativeInt(record.correct);
     const score = toScore(record.score);
+    const normalizedRecord = { ...record };
+    delete normalizedRecord.overtime;
     return {
-      ...record,
+      ...normalizedRecord,
       questions,
       correct: questions && correct !== null ? Math.min(correct, questions) : null,
       score
@@ -237,12 +239,10 @@ function saveTimedCorrectSession() {
 }
 
 function finalizeTimedSession(questions, papers, correct = null, score = null) {
-  const overtimeSeconds = Math.max(0, state.elapsed - state.duration);
-  saveSession(overtimeSeconds > 0, questions, papers, correct, score); state.status = 'finished'; render(); syncNativeVideoTime(true);
-  const overtimeText = overtimeSeconds > 0 ? `，超时 ${formatDuration(overtimeSeconds)}` : '';
+  saveSession(questions, papers, correct, score); state.status = 'finished'; render(); syncNativeVideoTime(true);
   const accuracyText = questions && correct !== null ? `，正确率 ${formatAccuracy(correct, questions)}` : '';
   const scoreText = score !== null ? `，分数 ${formatScore(score)}` : '';
-  showToast(`${papers ? `已保存：${papers} 套卷子` : '训练记录已保存'}${scoreText}${accuracyText}${overtimeText}`);
+  showToast(`${papers ? `已保存：${papers} 套卷子` : '训练记录已保存'}${scoreText}${accuracyText}`);
 }
 
 function finishSpeedSession() {
@@ -291,7 +291,7 @@ function showSpeedTypeStep() {
 function saveSpeedSession(moduleName) {
   const session = state.pendingSpeed; if (!session) return;
   const questions = session.questions || 1, correct = session.correct ?? null;
-  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, overtime: false, questions, correct });
+  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, questions, correct });
   state.records = state.records.slice(0, 500);
   state.pendingSpeed = null; saveRecords(); $('#singleModuleDialog').close(); resetSpeedSaveDialog(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; renderStats(); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${questions} 题，正确率 ${formatAccuracy(correct, questions)}，均时 ${formatClock(session.duration / questions).slice(3)}`);
 }
@@ -308,9 +308,9 @@ function getDefaultQuestionCount() {
   return state.mode === 'section' ? (SECTION_QUESTION_COUNTS[state.preset.name] || null) : null;
 }
 
-function saveSession(auto, questions, papers = null, correct = null, score = null) {
+function saveSession(questions, papers = null, correct = null, score = null) {
   if (state.elapsed < 1) return;
-  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt: new Date().toISOString(), overtime: auto || state.elapsed > state.duration, questions, papers, correct, score });
+  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt: new Date().toISOString(), questions, papers, correct, score });
   state.records = state.records.slice(0, 500); saveRecords(); renderStats();
 }
 
@@ -337,19 +337,19 @@ function renderStats() {
   const weekScore = getScoreAverage(week.filter(r => r.mode === 'mock'));
   $('#todayDuration').textContent = formatDuration(today.reduce((n,r)=>n+r.duration,0)); $('#weekCount').textContent = `${week.length} 次`; $('#weekDuration').textContent = formatDuration(week.reduce((n,r)=>n+r.duration,0)); $('#weekAccuracy').textContent = formatAccuracy(weekAccuracy.correct, weekAccuracy.questions); $('#weekScore').textContent = formatScore(weekScore);
   const modules = TRACKING_CATEGORIES; $('#moduleStats').innerHTML = modules.map(name => {
-    const rows = state.records.filter(r => r.module === name), avg = rows.length ? rows.reduce((n,r)=>n+r.duration,0)/rows.length : 0, overtime = rows.filter(r=>r.overtime).length;
+    const rows = state.records.filter(r => r.module === name), avg = rows.length ? rows.reduce((n,r)=>n+r.duration,0)/rows.length : 0;
     const questionRows = rows.filter(r => r.questions), avgPerQuestion = questionRows.length ? questionRows.reduce((n,r)=>n+r.duration/r.questions,0)/questionRows.length : 0;
     const accuracy = getAccuracyTotals(rows);
     const avgScore = getScoreAverage(rows);
     const paperRows = rows.filter(r => r.papers), paperText = paperRows.length ? ` / ${paperRows.reduce((n,r)=>n+r.papers,0)} 套` : '';
     const scoreText = avgScore !== null ? ` / 均分 ${formatScore(avgScore)}` : '';
     const accuracyText = accuracy.questions ? ` / ${accuracy.correct}/${accuracy.questions} 正确 / 正确率 ${formatAccuracy(accuracy.correct, accuracy.questions)}` : '';
-    return `<div class="module-row"><strong>${name}</strong><span>${rows.length ? formatDuration(avg) : '暂无记录'}${paperText}${scoreText}${avgPerQuestion ? ` / 题均 ${formatClock(avgPerQuestion).slice(3)}` : ''}${accuracyText}</span><span>${overtime} 次超时</span></div>`;
+    return `<div class="module-row"><strong>${name}</strong><span>${rows.length ? formatDuration(avg) : '暂无记录'}${paperText}${scoreText}${avgPerQuestion ? ` / 题均 ${formatClock(avgPerQuestion).slice(3)}` : ''}${accuracyText}</span></div>`;
   }).join('');
   $('#historyList').innerHTML = state.records.length ? state.records.slice(0,30).map(r => {
     const accuracyText = hasAccuracy(r) ? ` · 正确 ${r.correct}/${r.questions} · 正确率 ${formatAccuracy(r.correct, r.questions)}` : '';
     const scoreText = toScore(r.score) !== null ? ` · ${formatScore(toScore(r.score))}` : '';
-    return `<div class="history-row"><div class="history-main"><strong>${r.module}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}${r.overtime ? ' · 超时' : ''}</span></div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${r.id}" title="删除记录">×</button></div>`;
+    return `<div class="history-row"><div class="history-main"><strong>${r.module}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span></div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${r.id}" title="删除记录">×</button></div>`;
   }).join('') : '<div class="empty-state">完成一次训练后，记录会显示在这里</div>';
   $$('.delete-record').forEach(btn => btn.addEventListener('click', () => { if (!confirm('确定删除这条训练记录吗？此操作无法撤销。')) return; state.records = state.records.filter(r => r.id !== btn.dataset.id); saveRecords(); renderStats(); }));
 }

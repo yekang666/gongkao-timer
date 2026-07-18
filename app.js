@@ -144,7 +144,9 @@ function setMode(mode) {
   resetTimer(false);
   $$('.mode-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
   $('#singleSummary').classList.toggle('hidden', mode !== 'single');
-  $('#timerHint').textContent = mode === 'single' ? '正计时记录一组刷题训练，结束后填写题量和专项。' : '建议按正式考试节奏完成，计时结束将自动记录';
+  $('#timerHint').textContent = mode === 'single'
+    ? '正计时记录一组刷题训练，结束后填写题量和专项。'
+    : mode === 'section' ? '建议按正式考试节奏完成' : '建议按正式考试节奏完成，计时结束将自动记录';
   renderPresets(); syncMobilePipSource(true);
 }
 

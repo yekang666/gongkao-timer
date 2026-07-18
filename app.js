@@ -9,7 +9,7 @@ const PRESETS = {
     { name: '判断推理', seconds: 35 * 60 }, { name: '数量关系', seconds: 20 * 60 },
     { name: '政治理论', seconds: 10 * 60 }, { name: '常识判断', seconds: 5 * 60 }
   ],
-  single: [{ name: '正计时测速', seconds: 0 }]
+  single: [{ name: '自由测速', seconds: 0 }]
 };
 
 const $ = (selector) => document.querySelector(selector);

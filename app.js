@@ -23,12 +23,36 @@ const state = {
   mode: 'mock', preset: PRESETS.mock[0], duration: PRESETS.mock[0].seconds,
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
-  pendingSpeed: null, records: loadJSON(STORAGE_RECORDS, []),
+  pendingSpeed: null, pendingTimed: null, records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
   settings: { sound: true, dark: false, fontSize: 1, warning: 60, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
 function loadJSON(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+}
+
+function toPositiveInt(value) {
+  const number = Math.floor(Number(value));
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function toNonNegativeInt(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Math.floor(Number(value));
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function normalizeRecords(records) {
+  if (!Array.isArray(records)) return [];
+  return records.filter(record => record && typeof record === 'object').map(record => {
+    const questions = toPositiveInt(record.questions);
+    const correct = toNonNegativeInt(record.correct);
+    return {
+      ...record,
+      questions,
+      correct: questions && correct !== null ? Math.min(correct, questions) : null
+    };
+  });
 }
 
 function saveSettings() { localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(state.settings)); }
@@ -63,6 +87,20 @@ function formatDuration(seconds) {
   if (seconds < 60) return `${Math.round(seconds)} 秒`;
   const minutes = Math.round(seconds / 60);
   return minutes < 60 ? `${minutes} 分钟` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`;
+}
+function formatAccuracy(correct, questions) {
+  if (!Number.isFinite(correct) || !questions) return '暂无';
+  const rate = (correct / questions) * 100;
+  const rounded = Math.round(rate * 10) / 10;
+  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}%`;
+}
+function hasAccuracy(record) {
+  return toPositiveInt(record.questions) && toNonNegativeInt(record.correct) !== null;
+}
+function getAccuracyTotals(records) {
+  return records.filter(hasAccuracy).reduce((totals, record) => {
+    totals.questions += toPositiveInt(record.questions); totals.correct += toNonNegativeInt(record.correct); return totals;
+  }, { questions: 0, correct: 0 });
 }
 
 function renderPresets() {
@@ -127,13 +165,14 @@ function requestFinish() {
   if (state.elapsed < 1) return;
   if (state.mode === 'single') { finishSpeedSession(); return; }
   pauseTimer();
-  if (state.mode === 'mock') { finalizeTimedSession(null, 1); return; }
+  if (state.mode === 'mock') { openCorrectInputDialog(null, { papers: 1, editableQuestions: true }); return; }
   if (state.preset.name === '数量关系') { openQuantityChoiceDialog(); return; }
-  finalizeTimedSession(SECTION_QUESTION_COUNTS[state.preset.name] || null, null);
+  openCorrectInputDialog(SECTION_QUESTION_COUNTS[state.preset.name] || null);
 }
 
 function confirmFinish() {
   if (state.status === 'finished' && state.autoFinished) { $('#finishDialog').close(); resetFinishDialog(); return; }
+  if (state.pendingTimed?.step === 'correct') saveTimedCorrectSession();
 }
 
 function openQuantityChoiceDialog() {
@@ -144,14 +183,42 @@ function openQuantityChoiceDialog() {
 }
 
 function saveQuantitySession(questions) {
-  $('#finishDialog').close(); resetFinishDialog(); finalizeTimedSession(questions, null);
+  $('#finishDialog').close(); resetFinishDialog(); openCorrectInputDialog(questions);
 }
 
-function finalizeTimedSession(questions, papers) {
+function openCorrectInputDialog(questions, options = {}) {
+  if (!questions && !options.editableQuestions) { finalizeTimedSession(null, null, null); return; }
+  state.pendingTimed = { step: 'correct', questions, papers: options.papers ?? null, editableQuestions: Boolean(options.editableQuestions) };
+  $('#dialogTitle').textContent = options.editableQuestions ? '填写本次正确率' : '填写正确数量';
+  $('#dialogMessage').textContent = options.editableQuestions ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入完成题数和正确数量。` : `本次共 ${questions} 题，请输入做对的题数。`;
+  $('#finishQuestionCount').value = questions ? String(questions) : '';
+  $('#finishCorrectCount').max = questions ? String(questions) : '';
+  $('#finishCorrectCount').value = questions ? String(questions) : '';
+  $('#questionInputWrap').classList.toggle('hidden', !options.editableQuestions);
+  $('#quantityChoiceWrap').classList.add('hidden'); $('#correctInputWrap').classList.remove('hidden');
+  $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').textContent = '保存记录'; $('#finishDialog').showModal();
+  (options.editableQuestions ? $('#finishQuestionCount') : $('#finishCorrectCount')).focus();
+}
+
+function saveTimedCorrectSession() {
+  let questions = state.pendingTimed.questions;
+  if (state.pendingTimed.editableQuestions) {
+    questions = toPositiveInt($('#finishQuestionCount').value);
+    if (!questions) { showToast('请填写完成题数'); $('#finishQuestionCount').focus(); return; }
+    $('#finishCorrectCount').max = String(questions);
+  }
+  const correct = toNonNegativeInt($('#finishCorrectCount').value);
+  if (correct === null || correct > questions) { showToast(`正确数量需在 0 到 ${questions} 之间`); $('#finishCorrectCount').focus(); return; }
+  const papers = state.pendingTimed.papers;
+  state.pendingTimed = null; $('#finishDialog').close(); resetFinishDialog(); finalizeTimedSession(questions, papers, correct);
+}
+
+function finalizeTimedSession(questions, papers, correct = null) {
   const overtimeSeconds = Math.max(0, state.elapsed - state.duration);
-  saveSession(overtimeSeconds > 0, questions, papers); state.status = 'finished'; render(); syncNativeVideoTime(true);
+  saveSession(overtimeSeconds > 0, questions, papers, correct); state.status = 'finished'; render(); syncNativeVideoTime(true);
   const overtimeText = overtimeSeconds > 0 ? `，超时 ${formatDuration(overtimeSeconds)}` : '';
-  showToast(`${papers ? `已保存：${papers} 套卷子` : '训练记录已保存'}${overtimeText}`);
+  const accuracyText = questions && correct !== null ? `，正确率 ${formatAccuracy(correct, questions)}` : '';
+  showToast(`${papers ? `已保存：${papers} 套卷子` : '训练记录已保存'}${accuracyText}${overtimeText}`);
 }
 
 function finishSpeedSession() {
@@ -161,17 +228,34 @@ function finishSpeedSession() {
 }
 
 function openSpeedSaveDialog() {
+  state.pendingSpeed.step = 'questions';
   $('#singleLapMessage').textContent = `本次正计时 ${formatClock(state.pendingSpeed.duration)}，请先输入刷题数量。`;
-  $('#speedQuestionCount').value = '1'; $('#speedCountWrap').classList.remove('hidden'); $('#singleModulePicker').classList.add('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
+  $('#speedQuestionCount').value = '1'; $('#speedCorrectCount').value = '0'; $('#speedCountWrap').classList.remove('hidden'); $('#speedCorrectWrap').classList.add('hidden'); $('#singleModulePicker').classList.add('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
   $('#singleModuleDialog').showModal();
 }
 
-function showSpeedTypeStep() {
+function showSpeedNextStep() {
+  if (!state.pendingSpeed) return;
+  if (state.pendingSpeed.step === 'questions') { showSpeedCorrectStep(); return; }
+  if (state.pendingSpeed.step === 'correct') showSpeedTypeStep();
+}
+
+function showSpeedCorrectStep() {
   const questions = Math.floor(Number($('#speedQuestionCount').value) || 0);
   if (questions < 1) { showToast('请先输入刷题数量'); $('#speedQuestionCount').focus(); return; }
-  state.pendingSpeed.questions = questions;
-  $('#singleLapMessage').textContent = `已填写 ${questions} 题，请选择本次刷题类型。`;
-  $('#speedCountWrap').classList.add('hidden'); $('#nextSpeedStepBtn').classList.add('hidden');
+  state.pendingSpeed.questions = questions; state.pendingSpeed.step = 'correct';
+  $('#speedCorrectCount').max = String(questions); $('#speedCorrectCount').value = String(questions);
+  $('#singleLapMessage').textContent = `共 ${questions} 题，请输入正确数量。`;
+  $('#speedCountWrap').classList.add('hidden'); $('#speedCorrectWrap').classList.remove('hidden');
+}
+
+function showSpeedTypeStep() {
+  const questions = state.pendingSpeed.questions || 1;
+  const correct = toNonNegativeInt($('#speedCorrectCount').value);
+  if (correct === null || correct > questions) { showToast(`正确数量需在 0 到 ${questions} 之间`); $('#speedCorrectCount').focus(); return; }
+  state.pendingSpeed.correct = correct; state.pendingSpeed.step = 'type';
+  $('#singleLapMessage').textContent = `正确 ${correct}/${questions} 题，请选择本次刷题类型。`;
+  $('#speedCorrectWrap').classList.add('hidden'); $('#nextSpeedStepBtn').classList.add('hidden');
   const picker = $('#singleModulePicker'); picker.innerHTML = '';
   TRACKING_CATEGORIES.forEach(moduleName => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'module-choice'; button.textContent = moduleName;
@@ -182,13 +266,14 @@ function showSpeedTypeStep() {
 
 function saveSpeedSession(moduleName) {
   const session = state.pendingSpeed; if (!session) return;
-  const questions = session.questions || 1;
-  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, overtime: false, questions });
-  state.pendingSpeed = null; saveRecords(); $('#singleModuleDialog').close(); resetSpeedSaveDialog(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; renderStats(); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${questions} 题，均时 ${formatClock(session.duration / questions).slice(3)}`);
+  const questions = session.questions || 1, correct = session.correct ?? null;
+  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, overtime: false, questions, correct });
+  state.records = state.records.slice(0, 500);
+  state.pendingSpeed = null; saveRecords(); $('#singleModuleDialog').close(); resetSpeedSaveDialog(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; renderStats(); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${questions} 题，正确率 ${formatAccuracy(correct, questions)}，均时 ${formatClock(session.duration / questions).slice(3)}`);
 }
 
 function resetSpeedSaveDialog() {
-  $('#speedCountWrap').classList.remove('hidden'); $('#singleModulePicker').classList.add('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
+  $('#speedCountWrap').classList.remove('hidden'); $('#speedCorrectWrap').classList.add('hidden'); $('#singleModulePicker').classList.add('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
 }
 
 function cancelSpeedSession() {
@@ -199,9 +284,9 @@ function getDefaultQuestionCount() {
   return state.mode === 'section' ? (SECTION_QUESTION_COUNTS[state.preset.name] || null) : null;
 }
 
-function saveSession(auto, questions, papers = null) {
+function saveSession(auto, questions, papers = null, correct = null) {
   if (state.elapsed < 1) return;
-  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt: new Date().toISOString(), overtime: auto || state.elapsed > state.duration, questions, papers });
+  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt: new Date().toISOString(), overtime: auto || state.elapsed > state.duration, questions, papers, correct });
   state.records = state.records.slice(0, 500); saveRecords(); renderStats();
 }
 
@@ -224,14 +309,20 @@ function renderStats() {
   const now = new Date(), todayKey = now.toDateString(), weekStart = new Date(now); weekStart.setHours(0,0,0,0); weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
   const today = state.records.filter(r => new Date(r.endedAt).toDateString() === todayKey);
   const week = state.records.filter(r => new Date(r.endedAt) >= weekStart);
-  $('#todayDuration').textContent = formatDuration(today.reduce((n,r)=>n+r.duration,0)); $('#weekCount').textContent = `${week.length} 次`; $('#weekDuration').textContent = formatDuration(week.reduce((n,r)=>n+r.duration,0));
+  const weekAccuracy = getAccuracyTotals(week);
+  $('#todayDuration').textContent = formatDuration(today.reduce((n,r)=>n+r.duration,0)); $('#weekCount').textContent = `${week.length} 次`; $('#weekDuration').textContent = formatDuration(week.reduce((n,r)=>n+r.duration,0)); $('#weekAccuracy').textContent = formatAccuracy(weekAccuracy.correct, weekAccuracy.questions);
   const modules = TRACKING_CATEGORIES; $('#moduleStats').innerHTML = modules.map(name => {
     const rows = state.records.filter(r => r.module === name), avg = rows.length ? rows.reduce((n,r)=>n+r.duration,0)/rows.length : 0, overtime = rows.filter(r=>r.overtime).length;
     const questionRows = rows.filter(r => r.questions), avgPerQuestion = questionRows.length ? questionRows.reduce((n,r)=>n+r.duration/r.questions,0)/questionRows.length : 0;
+    const accuracy = getAccuracyTotals(rows);
     const paperRows = rows.filter(r => r.papers), paperText = paperRows.length ? ` / ${paperRows.reduce((n,r)=>n+r.papers,0)} 套` : '';
-    return `<div class="module-row"><strong>${name}</strong><span>${rows.length ? formatDuration(avg) : '暂无记录'}${paperText}${avgPerQuestion ? ` / 题均 ${formatClock(avgPerQuestion).slice(3)}` : ''}</span><span>${overtime} 次超时</span></div>`;
+    const accuracyText = accuracy.questions ? ` / ${accuracy.correct}/${accuracy.questions} 正确 / 正确率 ${formatAccuracy(accuracy.correct, accuracy.questions)}` : '';
+    return `<div class="module-row"><strong>${name}</strong><span>${rows.length ? formatDuration(avg) : '暂无记录'}${paperText}${avgPerQuestion ? ` / 题均 ${formatClock(avgPerQuestion).slice(3)}` : ''}${accuracyText}</span><span>${overtime} 次超时</span></div>`;
   }).join('');
-  $('#historyList').innerHTML = state.records.length ? state.records.slice(0,30).map(r => `<div class="history-row"><div class="history-main"><strong>${r.module}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${r.overtime ? ' · 超时' : ''}</span></div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${r.id}" title="删除记录">×</button></div>`).join('') : '<div class="empty-state">完成一次训练后，记录会显示在这里</div>';
+  $('#historyList').innerHTML = state.records.length ? state.records.slice(0,30).map(r => {
+    const accuracyText = hasAccuracy(r) ? ` · 正确 ${r.correct}/${r.questions} · 正确率 ${formatAccuracy(r.correct, r.questions)}` : '';
+    return `<div class="history-row"><div class="history-main"><strong>${r.module}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}${r.overtime ? ' · 超时' : ''}</span></div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${r.id}" title="删除记录">×</button></div>`;
+  }).join('') : '<div class="empty-state">完成一次训练后，记录会显示在这里</div>';
   $$('.delete-record').forEach(btn => btn.addEventListener('click', () => { if (!confirm('确定删除这条训练记录吗？此操作无法撤销。')) return; state.records = state.records.filter(r => r.id !== btn.dataset.id); saveRecords(); renderStats(); }));
 }
 
@@ -264,7 +355,7 @@ function normalizeImportedData(data) {
     const seconds = Number(section[preset.name]);
     customDurations.section[preset.name] = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : preset.seconds;
   });
-  return { settings: { ...state.settings, ...importedSettings, customDurations }, records: importedRecords.filter(record => record && typeof record === 'object') };
+  return { settings: { ...state.settings, ...importedSettings, customDurations }, records: normalizeRecords(importedRecords) };
 }
 
 async function importDataFile(file) {
@@ -282,7 +373,7 @@ function playBeep() { try { const ctx = new AudioContext(); [0,.2,.4].forEach(de
 function stopInterval() { clearInterval(state.interval); state.interval = null; }
 function showToast(message) { const el=$('#toast'); el.textContent=message;el.classList.remove('hidden');clearTimeout(el._timer);el._timer=setTimeout(()=>el.classList.add('hidden'),2200); }
 function resetFinishDialog() {
-  $('#questionInputWrap').classList.add('hidden'); $('#quantityChoiceWrap').classList.add('hidden');
+  $('#questionInputWrap').classList.add('hidden'); $('#correctInputWrap').classList.add('hidden'); $('#quantityChoiceWrap').classList.add('hidden');
   $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').textContent = '保存记录';
 }
 function showCompletion(title,message){ resetFinishDialog(); $('#dialogTitle').textContent=title;$('#dialogMessage').textContent=message;$('#cancelFinishBtn').classList.add('hidden');$('#confirmFinishBtn').textContent='知道了';$('#finishDialog').showModal(); }
@@ -479,10 +570,10 @@ function updatePip(){
 $$('.mode-tab').forEach(tab => tab.addEventListener('click', () => setMode(tab.dataset.mode)));
 $('#startBtn').addEventListener('click', startOrPause); $('#resetBtn').addEventListener('click', () => resetTimer(true)); $('#finishBtn').addEventListener('click', requestFinish);
 $('#confirmFinishBtn').addEventListener('click', confirmFinish);
-$('#cancelFinishBtn').addEventListener('click', () => { $('#finishDialog').close(); resetFinishDialog(); render(); syncNativeVideoTime(true); });
+$('#cancelFinishBtn').addEventListener('click', () => { state.pendingTimed = null; $('#finishDialog').close(); resetFinishDialog(); render(); syncNativeVideoTime(true); });
 $$('#quantityChoiceWrap [data-quantity]').forEach(button => button.addEventListener('click', () => saveQuantitySession(Number(button.dataset.quantity))));
 $('#cancelSingleModuleBtn').addEventListener('click', cancelSpeedSession);
-$('#nextSpeedStepBtn').addEventListener('click', showSpeedTypeStep);
+$('#nextSpeedStepBtn').addEventListener('click', showSpeedNextStep);
 $('#singleModuleDialog').addEventListener('cancel', event => { event.preventDefault(); cancelSpeedSession(); });
 $('#statsBtn').addEventListener('click',()=>{renderStats();openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>openDrawer($('#settingsDrawer')));$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});

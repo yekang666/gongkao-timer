@@ -59,8 +59,9 @@
       <article><span>今日刷题</span><strong id="todayDuration">0 分钟</strong></article>
       <article><span>本周训练</span><strong id="weekCount">0 次</strong></article>
       <article><span>本周时长</span><strong id="weekDuration">0 分钟</strong></article>
+      <article><span>本周正确率</span><strong id="weekAccuracy">暂无</strong></article>
     </div>
-    <section class="drawer-section"><div class="section-title"><h3>专项表现</h3><span>平均用时 / 超时</span></div><div class="module-stats" id="moduleStats"></div></section>
+    <section class="drawer-section"><div class="section-title"><h3>专项表现</h3><span>平均用时 / 正确率 / 超时</span></div><div class="module-stats" id="moduleStats"></div></section>
     <section class="drawer-section grow"><div class="section-title"><h3>最近记录</h3><button class="danger-link" id="clearAllBtn" type="button">清空全部</button></div><div class="history-list" id="historyList"></div></section>
   </aside>
 
@@ -79,7 +80,8 @@
 
   <dialog id="finishDialog">
     <div class="dialog-icon">✓</div><h2 id="dialogTitle">本次训练已完成</h2><p id="dialogMessage"></p>
-    <label class="question-input hidden" id="questionInputWrap">完成题数<input id="finishQuestionCount" type="number" min="1" value="1"></label>
+    <label class="question-input hidden" id="questionInputWrap">完成题数<input id="finishQuestionCount" type="number" min="1" step="1" inputmode="numeric" value=""></label>
+    <label class="question-input hidden" id="correctInputWrap">正确数量<input id="finishCorrectCount" type="number" min="0" step="1" inputmode="numeric" value=""></label>
     <div class="quantity-choice hidden" id="quantityChoiceWrap">
       <button class="module-choice" data-quantity="10" type="button">10 题</button>
       <button class="module-choice" data-quantity="15" type="button">15 题</button>
@@ -89,7 +91,8 @@
 
   <dialog id="singleModuleDialog">
     <div class="dialog-icon">✓</div><h2>保存正计时记录</h2><p id="singleLapMessage"></p>
-    <label class="question-input speed-count-input" id="speedCountWrap">刷题数量<input id="speedQuestionCount" type="number" min="1" step="1" value="1"></label>
+    <label class="question-input speed-count-input" id="speedCountWrap">刷题数量<input id="speedQuestionCount" type="number" min="1" step="1" inputmode="numeric" value="1"></label>
+    <label class="question-input hidden" id="speedCorrectWrap">正确数量<input id="speedCorrectCount" type="number" min="0" step="1" inputmode="numeric" value=""></label>
     <div class="module-picker hidden" id="singleModulePicker"></div>
     <div class="dialog-actions"><button class="secondary" id="cancelSingleModuleBtn" type="button">取消</button><button class="primary" id="nextSpeedStepBtn" type="button">下一步</button></div>
   </dialog>

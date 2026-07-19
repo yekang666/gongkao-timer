@@ -151,10 +151,9 @@ function setMode(mode) {
   stopInterval(); state.mode = mode; state.preset = PRESETS[mode][0]; state.duration = state.preset.seconds;
   resetTimer(false);
   $$('.mode-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
-  $('#singleSummary').classList.toggle('hidden', mode !== 'single');
   $('#timerHint').textContent = mode === 'single'
     ? '每完成一题点击计时数字、打点按钮或按空格，自动记录逐题用时。'
-    : mode === 'section' ? '建议按正式考试节奏完成' : '建议按正式考试节奏完成，计时结束将自动记录';
+    : mode === 'section' ? '按专项节奏完成，每做完一题可打点记录逐题用时。' : '按正式考试节奏完成，每做完一题可打点记录逐题用时。';
   renderPresets(); syncMobilePipSource(true);
 }
 
@@ -190,7 +189,7 @@ function resetTimer(confirmNeeded = true) {
 }
 
 function recordLap() {
-  if (state.mode !== 'single' || state.status !== 'running') return;
+  if (state.status !== 'running') return;
   tick();
   const lapDuration = state.elapsed - state.lastLapElapsed;
   if (lapDuration < .25) { showToast('打点间隔太短，请完成下一题后再记录'); return; }
@@ -202,7 +201,7 @@ function recordLap() {
 }
 
 function undoLap() {
-  if (state.mode !== 'single' || !state.laps.length) return;
+  if (!state.laps.length) return;
   const removed = state.laps.pop(); state.lastLapElapsed = state.laps.reduce((sum, value) => sum + value, 0);
   render(); $('#undoLapBtn').blur(); showToast(`已撤销上一题（${formatClock(removed).slice(3)}）`);
 }
@@ -214,21 +213,22 @@ function renderLapPanel() {
   $('#lapCount').textContent = `${count} 题`;
   $('#currentLapTime').textContent = formatClock(currentDuration).slice(3);
   $('#lapAverageTime').textContent = count ? formatClock(completedDuration / count).slice(3) : '暂无';
-  $('#lapBtn').disabled = state.mode !== 'single' || state.status !== 'running';
-  $('#undoLapBtn').disabled = state.mode !== 'single' || !count;
-  $('#timerDisplay').classList.toggle('lap-target', state.mode === 'single' && state.status === 'running');
-  $('#timerDisplay').title = state.mode === 'single' && state.status === 'running' ? '点击记录完成一题' : '';
-  $('#timerDisplay').tabIndex = state.mode === 'single' && state.status === 'running' ? 0 : -1;
-  $('#timerDisplay').setAttribute('aria-label', state.mode === 'single' && state.status === 'running' ? `总计时 ${formatClock(state.elapsed)}，点击记录完成一题` : `计时 ${$('#timerDisplay').textContent}`);
+  $('#lapBtn').disabled = state.status !== 'running';
+  $('#undoLapBtn').disabled = !count;
+  $('#timerDisplay').classList.toggle('lap-target', state.status === 'running');
+  $('#timerDisplay').title = state.status === 'running' ? '点击记录完成一题' : '';
+  $('#timerDisplay').tabIndex = state.status === 'running' ? 0 : -1;
+  $('#timerDisplay').setAttribute('aria-label', state.status === 'running' ? `计时 ${$('#timerDisplay').textContent}，点击记录完成一题` : `计时 ${$('#timerDisplay').textContent}`);
 }
 
 function requestFinish() {
   if (state.elapsed < 1) return;
   if (state.mode === 'single') { finishSpeedSession(); return; }
   pauseTimer();
-  if (state.mode === 'mock') { openCorrectInputDialog(null, { papers: 1, score: true }); return; }
-  if (state.preset.name === '数量关系') { openQuantityChoiceDialog(); return; }
-  openCorrectInputDialog(SECTION_QUESTION_COUNTS[state.preset.name] || null);
+  const lapQuestions = state.laps.length || null;
+  if (state.mode === 'mock') { openCorrectInputDialog(lapQuestions, { papers: 1, score: true }); return; }
+  if (state.preset.name === '数量关系' && !lapQuestions) { openQuantityChoiceDialog(); return; }
+  openCorrectInputDialog(lapQuestions || SECTION_QUESTION_COUNTS[state.preset.name] || null);
 }
 
 function confirmFinish() {
@@ -282,10 +282,11 @@ function saveTimedCorrectSession() {
 }
 
 function finalizeTimedSession(questions, papers, correct = null, score = null) {
-  saveSession(questions, papers, correct, score); state.status = 'finished'; render(); syncNativeVideoTime(true);
+  const savedRecord = saveSession(questions, papers, correct, score, state.laps); state.status = 'finished'; render(); syncNativeVideoTime(true);
   const accuracyText = questions && correct !== null ? `，正确率 ${formatAccuracy(correct, questions)}` : '';
   const scoreText = score !== null ? `，分数 ${formatScore(score)}` : '';
   showToast(`${papers ? `已保存：${papers} 套卷子` : '训练记录已保存'}${scoreText}${accuracyText}`);
+  if (savedRecord?.laps.length) openLapDetail(savedRecord.id);
 }
 
 function finishSpeedSession() {
@@ -391,10 +392,11 @@ function getDefaultQuestionCount() {
   return state.mode === 'section' ? (SECTION_QUESTION_COUNTS[state.preset.name] || null) : null;
 }
 
-function saveSession(questions, papers = null, correct = null, score = null) {
-  if (state.elapsed < 1) return;
-  state.records.unshift({ id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt: new Date().toISOString(), questions, papers, correct, score });
-  state.records = state.records.slice(0, 500); saveRecords(); renderStats();
+function saveSession(questions, papers = null, correct = null, score = null, laps = []) {
+  if (state.elapsed < 1) return null;
+  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt: new Date().toISOString(), questions, papers, correct, score, laps: normalizeLaps(laps) };
+  state.records.unshift(savedRecord);
+  state.records = state.records.slice(0, 500); saveRecords(); renderStats(); return savedRecord;
 }
 
 function render() {
@@ -426,8 +428,10 @@ function getLapStats(laps) {
 function openLapDetail(recordId) {
   const record = state.records.find(item => item.id === recordId), stats = getLapStats(record?.laps);
   if (!record || !stats) return;
+  const score = toScore(record.score);
+  const resultText = score !== null ? `得分 ${formatScore(score)}` : (record.correct !== null && record.correct !== undefined ? `正确 ${record.correct}/${record.questions ?? stats.values.length} 题` : `已打点 ${stats.values.length} 题`);
   $('#lapDetailTitle').textContent = `${record.module} · 逐题表现`;
-  $('#lapDetailMessage').textContent = `正确 ${record.correct ?? '—'}/${record.questions ?? stats.values.length} 题 · 中位数 ${formatClock(stats.median).slice(3)} · 最快 ${formatClock(stats.fastest).slice(3)}`;
+  $('#lapDetailMessage').textContent = `${resultText} · 中位数 ${formatClock(stats.median).slice(3)} · 最快 ${formatClock(stats.fastest).slice(3)}`;
   $('#lapDetailCount').textContent = `${stats.values.length} 题`;
   $('#lapDetailAverage').textContent = formatClock(stats.average).slice(3);
   $('#lapDetailSlowest').textContent = `第 ${stats.slowestIndex + 1} 题 · ${formatClock(stats.slowest).slice(3)}`;
@@ -713,7 +717,7 @@ $('#startBtn').addEventListener('click', startOrPause); $('#resetBtn').addEventL
 $('#lapBtn').addEventListener('click', recordLap); $('#undoLapBtn').addEventListener('click', undoLap); $('#timerDisplay').addEventListener('click', recordLap);
 $('#timerDisplay').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); recordLap(); } });
 document.addEventListener('keydown', event => {
-  if (event.code !== 'Space' || event.repeat || state.mode !== 'single' || state.status !== 'running' || $('dialog[open]')) return;
+  if (event.code !== 'Space' || event.repeat || state.status !== 'running' || $('dialog[open]')) return;
   if (event.target.closest('button,input,select,textarea,a,[contenteditable="true"]')) return;
   event.preventDefault(); recordLap();
 });

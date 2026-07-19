@@ -12,7 +12,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">考</span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v1.5.1</span></div><small>专注每一次提速</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v1.6.0</span></div><small>专注每一次提速</small></div>
       </div>
       <div class="top-actions">
         <button class="icon-button" id="pipBtn" type="button" title="开启悬浮计时" aria-label="开启悬浮计时">▣</button>
@@ -106,18 +106,19 @@
 
   <dialog id="singleModuleDialog" data-step="questions">
     <div class="dialog-icon" id="singleDialogIcon">1</div>
-    <span class="dialog-kicker" id="singleDialogKicker">第 1 步 · 填写题量</span>
-    <h2 id="singleDialogTitle">这组做了多少题？</h2>
+    <span class="dialog-kicker" id="singleDialogKicker">第 1 步 · 选择分类</span>
+    <h2 id="singleDialogTitle">先选择本次刷题类型</h2>
     <div class="speed-stepper" aria-label="保存记录进度">
-      <span class="speed-step active" data-speed-indicator="questions"><b>1</b>题量</span>
-      <span class="speed-step" data-speed-indicator="correct"><b>2</b>正确数</span>
-      <span class="speed-step" data-speed-indicator="type"><b>3</b>分类</span>
+      <span class="speed-step active" data-speed-indicator="type"><b>1</b><i>分类</i></span>
+      <span class="speed-step" data-speed-indicator="questions"><b>2</b><i>题量</i></span>
+      <span class="speed-step" data-speed-indicator="correct"><b>3</b><i>正确数</i></span>
     </div>
     <p id="singleLapMessage"></p>
     <label class="question-input speed-field" id="speedCountWrap"><span id="speedCountLabel">本组题目数量</span><input id="speedQuestionCount" type="number" min="1" step="1" inputmode="numeric" value="1" required><small id="speedCountHint">填写本轮实际完成的题数</small></label>
     <label class="question-input speed-field hidden" id="speedCorrectWrap"><span>本组正确数量</span><input id="speedCorrectCount" type="number" min="0" step="1" inputmode="numeric" value="" placeholder="请填写" required><small id="speedCorrectHint">必须主动填写，避免误记为全部正确</small></label>
+    <label class="question-input speed-field hidden" id="speedScoreWrap"><span>本次得分</span><input id="speedScore" type="number" min="0" max="100" step="0.5" inputmode="decimal" value="" placeholder="0 - 100" required><small id="speedScoreHint">模考类型只需填写成绩，随后进入训练复盘</small></label>
     <div class="module-picker hidden" id="singleModulePicker"></div>
-    <div class="dialog-actions"><button class="secondary" id="cancelSingleModuleBtn" type="button">取消</button><button class="primary" id="nextSpeedStepBtn" type="button">下一步：填写正确数</button></div>
+    <div class="dialog-actions"><button class="secondary" id="cancelSingleModuleBtn" type="button">取消</button><button class="primary hidden" id="nextSpeedStepBtn" type="button">下一步</button></div>
   </dialog>
 
   <dialog id="trainingMetaDialog">

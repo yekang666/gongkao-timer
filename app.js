@@ -18,14 +18,15 @@ const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
+const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
 
 const state = {
   mode: 'mock', preset: PRESETS.mock[0], duration: PRESETS.mock[0].seconds,
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
-  laps: [], lastLapElapsed: 0,
+  laps: [], lastLapElapsed: 0, pacingNotified: [],
   pendingSpeed: null, pendingTimed: null, records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
-  settings: { sound: true, dark: false, fontSize: 1, warning: 60, ...loadJSON(STORAGE_SETTINGS, {}) }
+  settings: { sound: true, pacing: true, dark: false, fontSize: 1, warning: 60, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
 function loadJSON(key, fallback) {
@@ -101,6 +102,7 @@ function formatClock(total) {
   const h = Math.floor(total / 3600), m = Math.floor(total % 3600 / 60), s = total % 60;
   return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
 }
+function formatShortClock(total) { const clock = formatClock(total); return total >= 3600 ? clock : clock.slice(3); }
 function formatDuration(seconds) {
   if (seconds < 60) return `${Math.round(seconds)} 秒`;
   const minutes = Math.round(seconds / 60);
@@ -170,7 +172,7 @@ function pauseTimer() {
   tick(); stopInterval(); state.status = 'paused'; render(); syncNativeVideoTime(true);
 }
 
-function tick() {
+function tick(skipPacing = false) {
   if (state.status !== 'running') return;
   const delta = (performance.now() - state.tickBase.at) / 1000;
   state.elapsed = state.tickBase.elapsed + delta;
@@ -180,20 +182,21 @@ function tick() {
     state.remaining = Math.max(0, rawRemaining);
     if (rawRemaining <= 0 && !state.autoFinished) { state.autoFinished = true; if (state.settings.sound) playBeep(); syncMobilePipSource(true); }
   }
-  render(); updatePip();
+  if (!skipPacing) checkMockPacing(); render(); updatePip();
 }
 
 function resetTimer(confirmNeeded = true) {
   if (confirmNeeded && state.elapsed >= 1 && !confirm('确定重置本轮计时吗？未结束的记录不会保存。')) return;
-  stopInterval(); state.remaining = state.duration; state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.autoFinished = false; state.laps = []; state.lastLapElapsed = 0; render(); updatePip(); syncMobilePipSource(true);
+  stopInterval(); state.remaining = state.duration; state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.autoFinished = false; state.laps = []; state.lastLapElapsed = 0; state.pacingNotified = []; render(); updatePip(); syncMobilePipSource(true);
 }
 
 function recordLap() {
   if (state.status !== 'running') return;
-  tick();
+  tick(true);
   const lapDuration = state.elapsed - state.lastLapElapsed;
   if (lapDuration < .25) { showToast('打点间隔太短，请完成下一题后再记录'); return; }
   state.laps.push(lapDuration); state.lastLapElapsed = state.elapsed;
+  checkMockPacing();
   const number = state.laps.length;
   $('#lapBtn').classList.remove('lap-pulse'); requestAnimationFrame(() => $('#lapBtn').classList.add('lap-pulse'));
   if (navigator.vibrate) navigator.vibrate(25);
@@ -219,6 +222,44 @@ function renderLapPanel() {
   $('#timerDisplay').title = state.status === 'running' ? '点击记录完成一题' : '';
   $('#timerDisplay').tabIndex = state.status === 'running' ? 0 : -1;
   $('#timerDisplay').setAttribute('aria-label', state.status === 'running' ? `计时 ${$('#timerDisplay').textContent}，点击记录完成一题` : `计时 ${$('#timerDisplay').textContent}`);
+}
+
+function isMockPacingActive() {
+  return state.settings.pacing !== false && state.mode === 'mock' && state.preset.name === '行测模考';
+}
+
+function getMockPacingPlan() {
+  const configuredTotal = PRESETS.section.reduce((sum, preset) => sum + preset.seconds, 0);
+  if (!configuredTotal || state.duration <= 0) return [];
+  let configuredElapsed = 0, questionTotal = 0;
+  return PRESETS.section.map((preset, index) => {
+    configuredElapsed += preset.seconds; questionTotal += MOCK_PACING_QUESTION_COUNTS[preset.name] || 0;
+    return { index, module: preset.name, at: state.duration * configuredElapsed / configuredTotal, questions: questionTotal, nextModule: PRESETS.section[index + 1]?.name || null };
+  }).slice(0, -1);
+}
+
+function checkMockPacing() {
+  if (!isMockPacingActive() || !state.laps.length) return;
+  const due = getMockPacingPlan().filter(checkpoint => state.elapsed >= checkpoint.at && !state.pacingNotified.includes(checkpoint.index));
+  if (!due.length) return;
+  due.forEach(checkpoint => state.pacingNotified.push(checkpoint.index));
+  const checkpoint = due[due.length - 1], completed = state.laps.length;
+  if (completed < checkpoint.questions) {
+    showToast(`节奏提醒：计划应完成 ${checkpoint.questions} 题，当前 ${completed} 题，落后 ${checkpoint.questions - completed} 题`, 'warning');
+  }
+}
+
+function renderPacingStatus() {
+  const status = $('#pacingStatus');
+  if (!isMockPacingActive()) { status.classList.add('hidden'); return; }
+  const plan = getMockPacingPlan(), next = plan.find(checkpoint => state.elapsed < checkpoint.at);
+  status.classList.remove('hidden');
+  if (next) {
+    const trackingHint = state.laps.length ? `当前 ${state.laps.length} 题` : '打点后判断是否落后';
+    $('#pacingStatusText').textContent = `${formatShortClock(next.at)} 前完成 ${next.module} · 累计 ${next.questions} 题 · ${trackingHint}`;
+  } else {
+    $('#pacingStatusText').textContent = `已进入最后模块 · 当前打点 ${state.laps.length} 题`;
+  }
 }
 
 function requestFinish() {
@@ -412,7 +453,7 @@ function render() {
   $('#finishBtn').innerHTML = state.mode === 'single' ? '✓<span>结束并保存</span>' : '■<span>结束</span>';
   $('#resetBtn').disabled = state.status === 'idle'; $('#finishBtn').disabled = state.status === 'idle';
   $$('.preset-button').forEach(el => el.disabled = state.status === 'running');
-  renderLapPanel();
+  renderLapPanel(); renderPacingStatus();
 }
 
 function getLapStats(laps) {
@@ -473,7 +514,7 @@ function renderStats() {
 function applySettings() {
   document.body.classList.toggle('dark', state.settings.dark);
   const sizes = ['clamp(4.5rem,9vw,8rem)','clamp(5rem,11vw,9.5rem)','clamp(5.5rem,13vw,11rem)']; document.documentElement.style.setProperty('--timer-size', sizes[state.settings.fontSize]);
-  $('#soundToggle').checked = state.settings.sound; $('#themeToggle').checked = state.settings.dark; $('#fontSizeRange').value = state.settings.fontSize; $('#warningRange').value = state.settings.warning;
+  $('#soundToggle').checked = state.settings.sound; $('#pacingToggle').checked = state.settings.pacing !== false; $('#themeToggle').checked = state.settings.dark; $('#fontSizeRange').value = state.settings.fontSize; $('#warningRange').value = state.settings.warning;
   $('#fontSizeOutput').textContent = ['紧凑','标准','特大'][state.settings.fontSize]; $('#warningOutput').textContent = `最后 ${state.settings.warning < 60 ? state.settings.warning + ' 秒' : state.settings.warning / 60 + ' 分钟'}`;
 }
 
@@ -515,8 +556,8 @@ async function importDataFile(file) {
 
 function playBeep() { try { const ctx = new AudioContext(); [0,.2,.4].forEach(delay => { const o=ctx.createOscillator(),g=ctx.createGain(); o.frequency.value=760;o.connect(g);g.connect(ctx.destination);g.gain.setValueAtTime(.18,ctx.currentTime+delay);g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+delay+.12);o.start(ctx.currentTime+delay);o.stop(ctx.currentTime+delay+.13); }); } catch {} }
 function stopInterval() { clearInterval(state.interval); state.interval = null; }
-function showToast(message) { const el=$('#toast'); el.textContent=message;el.classList.remove('hidden');clearTimeout(el._timer);el._timer=setTimeout(()=>el.classList.add('hidden'),2200); }
-function hideToast() { const el=$('#toast'); clearTimeout(el._timer); el.classList.add('hidden'); }
+function showToast(message, type = '') { const el=$('#toast'); el.textContent=message;el.classList.toggle('warning-toast',type==='warning');el.classList.remove('hidden');clearTimeout(el._timer);el._timer=setTimeout(()=>{el.classList.add('hidden');el.classList.remove('warning-toast')},type==='warning'?5200:2200); }
+function hideToast() { const el=$('#toast'); clearTimeout(el._timer); el.classList.add('hidden'); el.classList.remove('warning-toast'); }
 function resetFinishDialog() {
   $('#scoreInputWrap').classList.add('hidden'); $('#questionInputWrap').classList.add('hidden'); $('#correctInputWrap').classList.add('hidden'); $('#quantityChoiceWrap').classList.add('hidden');
   $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').textContent = '保存记录';
@@ -731,7 +772,7 @@ $('#closeLapDetailBtn').addEventListener('click', () => $('#lapDetailDialog').cl
 $('#lapDetailDialog').addEventListener('cancel', () => $('#lapDetailDialog').close());
 $('#statsBtn').addEventListener('click',()=>{renderStats();openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>openDrawer($('#settingsDrawer')));$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
-$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
+$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#saveSectionTimesBtn').addEventListener('click', saveSectionTimes);
 $('#exportDataBtn').addEventListener('click', exportData); $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click()); $('#importDataInput').addEventListener('change', e => { importDataFile(e.target.files[0]); e.target.value = ''; });

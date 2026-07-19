@@ -19,13 +19,15 @@ const STORAGE_SETTINGS = 'examTimer.settings.v1';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
+const TRAINING_DIFFICULTIES = ['简单', '正常', '较难'];
+const TRAINING_REASONS = ['不会', '粗心', '计算慢', '读题慢', '时间不足', '方法不熟', '状态不佳'];
 
 const state = {
   mode: 'mock', preset: PRESETS.mock[0], duration: PRESETS.mock[0].seconds,
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
   laps: [], lastLapElapsed: 0, pacingNotified: [],
-  pendingSpeed: null, pendingTimed: null, records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
+  pendingSpeed: null, pendingTimed: null, pendingMeta: null, records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
   settings: { sound: true, pacing: true, dark: false, fontSize: 1, warning: 60, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
@@ -55,6 +57,14 @@ function normalizeLaps(laps) {
   return laps.map(Number).filter(value => Number.isFinite(value) && value > 0 && value <= 6 * 60 * 60).slice(0, 500).map(value => Math.round(value * 1000) / 1000);
 }
 
+function normalizeText(value, maxLength) { return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''; }
+function normalizeTrainingMeta(meta = {}) {
+  const difficulty = TRAINING_DIFFICULTIES.includes(meta.difficulty) ? meta.difficulty : null;
+  const reasons = Array.isArray(meta.reasons) ? [...new Set(meta.reasons.filter(reason => TRAINING_REASONS.includes(reason)))].slice(0, TRAINING_REASONS.length) : [];
+  return { source: normalizeText(meta.source, 80), difficulty, reasons, note: normalizeText(meta.note, 500) };
+}
+function escapeHTML(value) { const element = document.createElement('span'); element.textContent = String(value ?? ''); return element.innerHTML; }
+
 function normalizeRecords(records) {
   if (!Array.isArray(records)) return [];
   return records.filter(record => record && typeof record === 'object').map(record => {
@@ -62,6 +72,7 @@ function normalizeRecords(records) {
     const correct = toNonNegativeInt(record.correct);
     const score = toScore(record.score);
     const laps = normalizeLaps(record.laps);
+    const meta = normalizeTrainingMeta(record);
     const normalizedRecord = { ...record };
     delete normalizedRecord.overtime;
     return {
@@ -69,7 +80,8 @@ function normalizeRecords(records) {
       questions,
       correct: questions && correct !== null ? Math.min(correct, questions) : null,
       score,
-      laps
+      laps,
+      ...meta
     };
   });
 }
@@ -289,7 +301,7 @@ function saveQuantitySession(questions) {
 }
 
 function openCorrectInputDialog(questions, options = {}) {
-  if (!questions && !options.editableQuestions && !options.score) { finalizeTimedSession(null, null, null); return; }
+  if (!questions && !options.editableQuestions && !options.score) { beginTimedMeta({ questions: null, papers: null, correct: null, score: null }); return; }
   state.pendingTimed = { step: 'correct', questions, papers: options.papers ?? null, editableQuestions: Boolean(options.editableQuestions), score: Boolean(options.score) };
   $('#dialogTitle').textContent = options.score ? '填写本次分数' : (options.editableQuestions ? '填写本次正确率' : '填写正确数量');
   $('#dialogMessage').textContent = options.score ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入本次得分。` : (options.editableQuestions ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入完成题数和正确数量。` : `本次共 ${questions} 题，请输入做对的题数。`);
@@ -300,7 +312,7 @@ function openCorrectInputDialog(questions, options = {}) {
   $('#scoreInputWrap').classList.toggle('hidden', !options.score);
   $('#questionInputWrap').classList.toggle('hidden', !options.editableQuestions);
   $('#quantityChoiceWrap').classList.add('hidden'); $('#correctInputWrap').classList.toggle('hidden', options.score);
-  $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').textContent = '保存记录'; $('#finishDialog').showModal();
+  $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').textContent = '下一步：复盘'; $('#finishDialog').showModal();
   (options.score ? $('#finishScore') : (options.editableQuestions ? $('#finishQuestionCount') : $('#finishCorrectCount'))).focus();
 }
 
@@ -319,15 +331,49 @@ function saveTimedCorrectSession() {
   const correct = state.pendingTimed.score ? null : toNonNegativeInt($('#finishCorrectCount').value);
   if (!state.pendingTimed.score && (correct === null || correct > questions)) { showToast(`正确数量需在 0 到 ${questions} 之间`); $('#finishCorrectCount').focus(); return; }
   const papers = state.pendingTimed.papers;
-  state.pendingTimed = null; $('#finishDialog').close(); resetFinishDialog(); finalizeTimedSession(questions, papers, correct, score);
+  state.pendingTimed = null; $('#finishDialog').close(); resetFinishDialog(); beginTimedMeta({ questions, papers, correct, score });
 }
 
-function finalizeTimedSession(questions, papers, correct = null, score = null) {
-  const savedRecord = saveSession(questions, papers, correct, score, state.laps); state.status = 'finished'; render(); syncNativeVideoTime(true);
+function beginTimedMeta(result) {
+  state.pendingMeta = { context: 'timed', result };
+  openTrainingMetaDialog(`${state.preset.name} · 训练复盘`);
+}
+
+function finalizeTimedSession(questions, papers, correct = null, score = null, meta = {}) {
+  const savedRecord = saveSession(questions, papers, correct, score, state.laps, meta); state.status = 'finished'; render(); syncNativeVideoTime(true);
   const accuracyText = questions && correct !== null ? `，正确率 ${formatAccuracy(correct, questions)}` : '';
   const scoreText = score !== null ? `，分数 ${formatScore(score)}` : '';
   showToast(`${papers ? `已保存：${papers} 套卷子` : '训练记录已保存'}${scoreText}${accuracyText}`);
   if (savedRecord?.laps.length) openLapDetail(savedRecord.id);
+}
+
+function resetTrainingMetaDialog() {
+  $('#trainingSource').value = ''; $('#trainingNote').value = '';
+  $$('#trainingMetaDialog [aria-pressed]').forEach(button => { button.classList.remove('selected'); button.setAttribute('aria-pressed', 'false'); });
+}
+
+function openTrainingMetaDialog(title) {
+  resetTrainingMetaDialog(); $('#trainingMetaTitle').textContent = title;
+  $('#trainingMetaDialog').showModal(); $('#trainingSource').focus();
+}
+
+function readTrainingMeta() {
+  return normalizeTrainingMeta({
+    source: $('#trainingSource').value,
+    difficulty: $('#difficultyChoices [aria-pressed="true"]')?.dataset.difficulty || null,
+    reasons: $$('#reasonChoices [aria-pressed="true"]').map(button => button.dataset.reason),
+    note: $('#trainingNote').value
+  });
+}
+
+function finishTrainingMeta(skip = false) {
+  const pending = state.pendingMeta; if (!pending) return;
+  const meta = skip ? normalizeTrainingMeta() : readTrainingMeta();
+  state.pendingMeta = null; $('#trainingMetaDialog').close();
+  if (pending.context === 'timed') {
+    const { questions, papers, correct, score } = pending.result;
+    finalizeTimedSession(questions, papers, correct, score, meta);
+  } else if (pending.context === 'speed') finalizeSpeedSession(pending.moduleName, meta);
 }
 
 function finishSpeedSession() {
@@ -398,8 +444,8 @@ function showSpeedTypeStep() {
   state.pendingSpeed.correct = correct; state.pendingSpeed.step = 'type';
   $('#speedCorrectWrap').classList.add('hidden'); $('#nextSpeedStepBtn').classList.add('hidden');
   updateSpeedDialogStep('type', {
-    title: '最后，选择刷题类型',
-    message: `已记录 ${questions} 题、正确 ${correct} 题（${formatAccuracy(correct, questions)}），点击对应分类即可保存。`
+    title: '选择刷题类型',
+    message: `已记录 ${questions} 题、正确 ${correct} 题（${formatAccuracy(correct, questions)}），选择分类后可补充复盘信息。`
   });
   const picker = $('#singleModulePicker'); picker.innerHTML = '';
   TRACKING_CATEGORIES.forEach(moduleName => {
@@ -410,9 +456,15 @@ function showSpeedTypeStep() {
 }
 
 function saveSpeedSession(moduleName) {
+  if (!state.pendingSpeed) return;
+  state.pendingMeta = { context: 'speed', moduleName };
+  $('#singleModuleDialog').close(); openTrainingMetaDialog(`${moduleName} · 训练复盘`);
+}
+
+function finalizeSpeedSession(moduleName, meta = {}) {
   const session = state.pendingSpeed; if (!session) return;
   const questions = session.questions || 1, correct = session.correct ?? null;
-  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, questions, correct, laps: session.laps };
+  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, questions, correct, laps: session.laps, ...normalizeTrainingMeta(meta) };
   state.records.unshift(savedRecord);
   state.records = state.records.slice(0, 500);
   state.pendingSpeed = null; saveRecords(); $('#singleModuleDialog').close(); resetSpeedSaveDialog(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.laps = []; state.lastLapElapsed = 0; renderStats(); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${questions} 题，正确率 ${formatAccuracy(correct, questions)}，均时 ${formatClock(session.duration / questions).slice(3)}`);
@@ -433,9 +485,9 @@ function getDefaultQuestionCount() {
   return state.mode === 'section' ? (SECTION_QUESTION_COUNTS[state.preset.name] || null) : null;
 }
 
-function saveSession(questions, papers = null, correct = null, score = null, laps = []) {
+function saveSession(questions, papers = null, correct = null, score = null, laps = [], meta = {}) {
   if (state.elapsed < 1) return null;
-  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt: new Date().toISOString(), questions, papers, correct, score, laps: normalizeLaps(laps) };
+  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt: new Date().toISOString(), questions, papers, correct, score, laps: normalizeLaps(laps), ...normalizeTrainingMeta(meta) };
   state.records.unshift(savedRecord);
   state.records = state.records.slice(0, 500); saveRecords(); renderStats(); return savedRecord;
 }
@@ -481,7 +533,19 @@ function openLapDetail(recordId) {
     const marker = index === stats.slowestIndex ? '<em>最慢</em>' : (duration === stats.fastest ? '<em class="fast">最快</em>' : '');
     return `<div class="lap-detail-row"><span>第 ${index + 1} 题</span><div><i style="width:${ratio}%"></i></div><strong>${formatClock(duration).slice(3)}</strong>${marker}</div>`;
   }).join('');
+  const metaParts = [record.source ? `来源：${record.source}` : '', record.difficulty ? `难度：${record.difficulty}` : '', record.reasons?.length ? `错因：${record.reasons.join('、')}` : ''].filter(Boolean);
+  $('#lapTrainingMeta').classList.toggle('hidden', !metaParts.length && !record.note);
+  $('#lapTrainingMetaSummary').textContent = metaParts.join(' · ');
+  $('#lapTrainingNote').textContent = record.note ? `“${record.note}”` : '';
   if (!$('#lapDetailDialog').open) $('#lapDetailDialog').showModal();
+}
+
+function recordMatchesHistoryFilter(record, filter) {
+  if (!filter) return true;
+  const separator = filter.indexOf(':'), type = filter.slice(0, separator), value = filter.slice(separator + 1);
+  if (type === 'difficulty') return record.difficulty === value;
+  if (type === 'reason') return record.reasons?.includes(value);
+  return true;
 }
 
 function renderStats() {
@@ -501,12 +565,17 @@ function renderStats() {
     const accuracyText = accuracy.questions ? ` / ${accuracy.correct}/${accuracy.questions} 正确 / 正确率 ${formatAccuracy(accuracy.correct, accuracy.questions)}` : '';
     return `<div class="module-row"><strong>${name}</strong><span>${rows.length ? formatDuration(avg) : '暂无记录'}${paperText}${scoreText}${avgPerQuestion ? ` / 题均 ${formatClock(avgPerQuestion).slice(3)}` : ''}${accuracyText}</span></div>`;
   }).join('');
-  $('#historyList').innerHTML = state.records.length ? state.records.slice(0,30).map(r => {
+  const historyFilter = $('#historyFilter')?.value || '';
+  const filteredRecords = state.records.filter(record => recordMatchesHistoryFilter(record, historyFilter));
+  $('#historyList').innerHTML = filteredRecords.length ? filteredRecords.slice(0,30).map(r => {
     const accuracyText = hasAccuracy(r) ? ` · 正确 ${r.correct}/${r.questions} · 正确率 ${formatAccuracy(r.correct, r.questions)}` : '';
     const scoreText = toScore(r.score) !== null ? ` · ${formatScore(toScore(r.score))}` : '';
-    const lapLink = normalizeLaps(r.laps).length ? `<button class="lap-detail-button" data-lap-id="${r.id}" type="button">查看 ${r.laps.length} 题逐题用时</button>` : '';
-    return `<div class="history-row"><div class="history-main"><strong>${r.module}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${lapLink}</div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${r.id}" title="删除记录">×</button></div>`;
-  }).join('') : '<div class="empty-state">完成一次训练后，记录会显示在这里</div>';
+    const lapLink = normalizeLaps(r.laps).length ? `<button class="lap-detail-button" data-lap-id="${escapeHTML(r.id)}" type="button">查看 ${r.laps.length} 题逐题用时</button>` : '';
+    const tags = [r.source ? `<span class="record-tag source">来源：${escapeHTML(r.source)}</span>` : '', r.difficulty ? `<span class="record-tag difficulty">${r.difficulty}</span>` : '', ...(r.reasons || []).map(reason => `<span class="record-tag reason">${reason}</span>`)].filter(Boolean).join('');
+    const notePreview = r.note ? (r.note.length > 120 ? `${r.note.slice(0, 120)}…` : r.note) : '';
+    const metaHtml = tags || notePreview ? `<div class="record-meta-tags">${tags}</div>${notePreview ? `<span class="history-note">“${escapeHTML(notePreview)}”</span>` : ''}` : '';
+    return `<div class="history-row"><div class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${metaHtml}${lapLink}</div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${escapeHTML(r.id)}" title="删除记录">×</button></div>`;
+  }).join('') : `<div class="empty-state">${historyFilter ? '没有符合筛选条件的记录' : '完成一次训练后，记录会显示在这里'}</div>`;
   $$('.delete-record').forEach(btn => btn.addEventListener('click', () => { if (!confirm('确定删除这条训练记录吗？此操作无法撤销。')) return; state.records = state.records.filter(r => r.id !== btn.dataset.id); saveRecords(); renderStats(); }));
   $$('.lap-detail-button').forEach(btn => btn.addEventListener('click', () => openLapDetail(btn.dataset.lapId)));
 }
@@ -768,10 +837,19 @@ $$('#quantityChoiceWrap [data-quantity]').forEach(button => button.addEventListe
 $('#cancelSingleModuleBtn').addEventListener('click', cancelSpeedSession);
 $('#nextSpeedStepBtn').addEventListener('click', showSpeedNextStep);
 $('#singleModuleDialog').addEventListener('cancel', event => { event.preventDefault(); cancelSpeedSession(); });
+$$('#difficultyChoices [data-difficulty]').forEach(button => button.addEventListener('click', () => {
+  const willSelect = button.getAttribute('aria-pressed') !== 'true';
+  $$('#difficultyChoices [data-difficulty]').forEach(item => { item.classList.remove('selected'); item.setAttribute('aria-pressed', 'false'); });
+  if (willSelect) { button.classList.add('selected'); button.setAttribute('aria-pressed', 'true'); }
+}));
+$$('#reasonChoices [data-reason]').forEach(button => button.addEventListener('click', () => { const selected = button.getAttribute('aria-pressed') !== 'true'; button.classList.toggle('selected', selected); button.setAttribute('aria-pressed', String(selected)); }));
+$('#skipTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(true)); $('#confirmTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(false));
+$('#trainingMetaDialog').addEventListener('cancel', event => { event.preventDefault(); finishTrainingMeta(true); });
 $('#closeLapDetailBtn').addEventListener('click', () => $('#lapDetailDialog').close());
 $('#lapDetailDialog').addEventListener('cancel', () => $('#lapDetailDialog').close());
 $('#statsBtn').addEventListener('click',()=>{renderStats();openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>openDrawer($('#settingsDrawer')));$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
+$('#historyFilter').addEventListener('change', renderStats);
 $('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#saveSectionTimesBtn').addEventListener('click', saveSectionTimes);

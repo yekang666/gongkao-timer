@@ -20,7 +20,6 @@ const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name })
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
 const TRAINING_DIFFICULTIES = ['简单', '正常', '较难'];
-const TRAINING_REASONS = ['不会', '粗心', '计算慢', '读题慢', '时间不足', '方法不熟', '状态不佳'];
 
 const state = {
   mode: 'mock', preset: PRESETS.mock[0], duration: PRESETS.mock[0].seconds,
@@ -60,8 +59,7 @@ function normalizeLaps(laps) {
 function normalizeText(value, maxLength) { return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''; }
 function normalizeTrainingMeta(meta = {}) {
   const difficulty = TRAINING_DIFFICULTIES.includes(meta.difficulty) ? meta.difficulty : null;
-  const reasons = Array.isArray(meta.reasons) ? [...new Set(meta.reasons.filter(reason => TRAINING_REASONS.includes(reason)))].slice(0, TRAINING_REASONS.length) : [];
-  return { source: normalizeText(meta.source, 80), difficulty, reasons, note: normalizeText(meta.note, 500) };
+  return { source: normalizeText(meta.source, 80), difficulty, note: normalizeText(meta.note, 500) };
 }
 function escapeHTML(value) { const element = document.createElement('span'); element.textContent = String(value ?? ''); return element.innerHTML; }
 
@@ -75,6 +73,7 @@ function normalizeRecords(records) {
     const meta = normalizeTrainingMeta(record);
     const normalizedRecord = { ...record };
     delete normalizedRecord.overtime;
+    delete normalizedRecord.reasons;
     return {
       ...normalizedRecord,
       questions,
@@ -361,7 +360,6 @@ function readTrainingMeta() {
   return normalizeTrainingMeta({
     source: $('#trainingSource').value,
     difficulty: $('#difficultyChoices [aria-pressed="true"]')?.dataset.difficulty || null,
-    reasons: $$('#reasonChoices [aria-pressed="true"]').map(button => button.dataset.reason),
     note: $('#trainingNote').value
   });
 }
@@ -533,7 +531,7 @@ function openLapDetail(recordId) {
     const marker = index === stats.slowestIndex ? '<em>最慢</em>' : (duration === stats.fastest ? '<em class="fast">最快</em>' : '');
     return `<div class="lap-detail-row"><span>第 ${index + 1} 题</span><div><i style="width:${ratio}%"></i></div><strong>${formatClock(duration).slice(3)}</strong>${marker}</div>`;
   }).join('');
-  const metaParts = [record.source ? `来源：${record.source}` : '', record.difficulty ? `难度：${record.difficulty}` : '', record.reasons?.length ? `错因：${record.reasons.join('、')}` : ''].filter(Boolean);
+  const metaParts = [record.source ? `来源：${record.source}` : '', record.difficulty ? `难度：${record.difficulty}` : ''].filter(Boolean);
   $('#lapTrainingMeta').classList.toggle('hidden', !metaParts.length && !record.note);
   $('#lapTrainingMetaSummary').textContent = metaParts.join(' · ');
   $('#lapTrainingNote').textContent = record.note ? `“${record.note}”` : '';
@@ -544,7 +542,6 @@ function recordMatchesHistoryFilter(record, filter) {
   if (!filter) return true;
   const separator = filter.indexOf(':'), type = filter.slice(0, separator), value = filter.slice(separator + 1);
   if (type === 'difficulty') return record.difficulty === value;
-  if (type === 'reason') return record.reasons?.includes(value);
   return true;
 }
 
@@ -571,7 +568,7 @@ function renderStats() {
     const accuracyText = hasAccuracy(r) ? ` · 正确 ${r.correct}/${r.questions} · 正确率 ${formatAccuracy(r.correct, r.questions)}` : '';
     const scoreText = toScore(r.score) !== null ? ` · ${formatScore(toScore(r.score))}` : '';
     const lapLink = normalizeLaps(r.laps).length ? `<button class="lap-detail-button" data-lap-id="${escapeHTML(r.id)}" type="button">查看 ${r.laps.length} 题逐题用时</button>` : '';
-    const tags = [r.source ? `<span class="record-tag source">来源：${escapeHTML(r.source)}</span>` : '', r.difficulty ? `<span class="record-tag difficulty">${r.difficulty}</span>` : '', ...(r.reasons || []).map(reason => `<span class="record-tag reason">${reason}</span>`)].filter(Boolean).join('');
+    const tags = [r.source ? `<span class="record-tag source">来源：${escapeHTML(r.source)}</span>` : '', r.difficulty ? `<span class="record-tag difficulty">${r.difficulty}</span>` : ''].filter(Boolean).join('');
     const notePreview = r.note ? (r.note.length > 120 ? `${r.note.slice(0, 120)}…` : r.note) : '';
     const metaHtml = tags || notePreview ? `<div class="record-meta-tags">${tags}</div>${notePreview ? `<span class="history-note">“${escapeHTML(notePreview)}”</span>` : ''}` : '';
     return `<div class="history-row"><div class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${metaHtml}${lapLink}</div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${escapeHTML(r.id)}" title="删除记录">×</button></div>`;
@@ -842,7 +839,6 @@ $$('#difficultyChoices [data-difficulty]').forEach(button => button.addEventList
   $$('#difficultyChoices [data-difficulty]').forEach(item => { item.classList.remove('selected'); item.setAttribute('aria-pressed', 'false'); });
   if (willSelect) { button.classList.add('selected'); button.setAttribute('aria-pressed', 'true'); }
 }));
-$$('#reasonChoices [data-reason]').forEach(button => button.addEventListener('click', () => { const selected = button.getAttribute('aria-pressed') !== 'true'; button.classList.toggle('selected', selected); button.setAttribute('aria-pressed', String(selected)); }));
 $('#skipTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(true)); $('#confirmTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(false));
 $('#trainingMetaDialog').addEventListener('cancel', event => { event.preventDefault(); finishTrainingMeta(true); });
 $('#closeLapDetailBtn').addEventListener('click', () => $('#lapDetailDialog').close());

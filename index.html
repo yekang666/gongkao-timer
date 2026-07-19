@@ -12,7 +12,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">考</span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v1.5.0</span></div><small>专注每一次提速</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v1.5.1</span></div><small>专注每一次提速</small></div>
       </div>
       <div class="top-actions">
         <button class="icon-button" id="pipBtn" type="button" title="开启悬浮计时" aria-label="开启悬浮计时">▣</button>
@@ -75,7 +75,7 @@
       <article><span>本周模考均分</span><strong id="weekScore">暂无</strong></article>
     </div>
     <section class="drawer-section"><div class="section-title"><h3>专项表现</h3><span>平均用时 / 正确率</span></div><div class="module-stats" id="moduleStats"></div></section>
-    <section class="drawer-section grow"><div class="section-title"><h3>最近记录</h3><div class="history-tools"><select id="historyFilter" aria-label="筛选训练记录"><option value="">全部记录</option><optgroup label="难度"><option value="difficulty:简单">简单</option><option value="difficulty:正常">正常</option><option value="difficulty:较难">较难</option></optgroup><optgroup label="错因"><option value="reason:不会">不会</option><option value="reason:粗心">粗心</option><option value="reason:计算慢">计算慢</option><option value="reason:读题慢">读题慢</option><option value="reason:时间不足">时间不足</option><option value="reason:方法不熟">方法不熟</option><option value="reason:状态不佳">状态不佳</option></optgroup></select><button class="danger-link" id="clearAllBtn" type="button">清空全部</button></div></div><div class="history-list" id="historyList"></div></section>
+    <section class="drawer-section grow"><div class="section-title"><h3>最近记录</h3><div class="history-tools"><select id="historyFilter" aria-label="筛选训练记录"><option value="">全部记录</option><optgroup label="难度"><option value="difficulty:简单">简单</option><option value="difficulty:正常">正常</option><option value="difficulty:较难">较难</option></optgroup></select><button class="danger-link" id="clearAllBtn" type="button">清空全部</button></div></div><div class="history-list" id="historyList"></div></section>
   </aside>
 
   <aside class="drawer" id="settingsDrawer" aria-hidden="true">
@@ -124,10 +124,9 @@
     <div class="dialog-icon">✎</div>
     <span class="dialog-kicker">可选信息</span>
     <h2 id="trainingMetaTitle">补充训练复盘</h2>
-    <p>记录训练背景和错因，方便之后筛选与复盘。</p>
+    <p>记录训练背景和整体感受，方便之后筛选与复盘。</p>
     <label class="meta-field"><span>试卷 / 资料来源</span><input id="trainingSource" type="text" maxlength="80" placeholder="例如：2025 国考地市卷"></label>
     <fieldset class="meta-group"><legend>本次难度</legend><div class="meta-choice-row" id="difficultyChoices"><button data-difficulty="简单" type="button" aria-pressed="false">简单</button><button data-difficulty="正常" type="button" aria-pressed="false">正常</button><button data-difficulty="较难" type="button" aria-pressed="false">较难</button></div></fieldset>
-    <fieldset class="meta-group"><legend>错因标签（可多选）</legend><div class="meta-choice-row reason-choices" id="reasonChoices"><button data-reason="不会" type="button" aria-pressed="false">不会</button><button data-reason="粗心" type="button" aria-pressed="false">粗心</button><button data-reason="计算慢" type="button" aria-pressed="false">计算慢</button><button data-reason="读题慢" type="button" aria-pressed="false">读题慢</button><button data-reason="时间不足" type="button" aria-pressed="false">时间不足</button><button data-reason="方法不熟" type="button" aria-pressed="false">方法不熟</button><button data-reason="状态不佳" type="button" aria-pressed="false">状态不佳</button></div></fieldset>
     <label class="meta-field"><span>复盘备注</span><textarea id="trainingNote" maxlength="500" rows="3" placeholder="例如：资料分析最后一组耗时偏长，下次先看材料结构"></textarea></label>
     <div class="dialog-actions"><button class="secondary" id="skipTrainingMetaBtn" type="button">跳过并保存</button><button class="primary" id="confirmTrainingMetaBtn" type="button">保存记录</button></div>
   </dialog>

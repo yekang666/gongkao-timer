@@ -91,12 +91,20 @@
     <div class="dialog-actions"><button class="secondary" id="cancelFinishBtn" type="button">取消</button><button class="primary" id="confirmFinishBtn" type="button">保存记录</button></div>
   </dialog>
 
-  <dialog id="singleModuleDialog">
-    <div class="dialog-icon">✓</div><h2>保存正计时记录</h2><p id="singleLapMessage"></p>
-    <label class="question-input speed-count-input" id="speedCountWrap">刷题数量<input id="speedQuestionCount" type="number" min="1" step="1" inputmode="numeric" value="1"></label>
-    <label class="question-input hidden" id="speedCorrectWrap">正确数量<input id="speedCorrectCount" type="number" min="0" step="1" inputmode="numeric" value=""></label>
+  <dialog id="singleModuleDialog" data-step="questions">
+    <div class="dialog-icon" id="singleDialogIcon">1</div>
+    <span class="dialog-kicker" id="singleDialogKicker">第 1 步 · 填写题量</span>
+    <h2 id="singleDialogTitle">这组做了多少题？</h2>
+    <div class="speed-stepper" aria-label="保存记录进度">
+      <span class="speed-step active" data-speed-indicator="questions"><b>1</b>题量</span>
+      <span class="speed-step" data-speed-indicator="correct"><b>2</b>正确数</span>
+      <span class="speed-step" data-speed-indicator="type"><b>3</b>分类</span>
+    </div>
+    <p id="singleLapMessage"></p>
+    <label class="question-input speed-field" id="speedCountWrap"><span>本组题目数量</span><input id="speedQuestionCount" type="number" min="1" step="1" inputmode="numeric" value="1" required><small>填写本轮实际完成的题数</small></label>
+    <label class="question-input speed-field hidden" id="speedCorrectWrap"><span>本组正确数量</span><input id="speedCorrectCount" type="number" min="0" step="1" inputmode="numeric" value="" placeholder="请填写" required><small id="speedCorrectHint">必须主动填写，避免误记为全部正确</small></label>
     <div class="module-picker hidden" id="singleModulePicker"></div>
-    <div class="dialog-actions"><button class="secondary" id="cancelSingleModuleBtn" type="button">取消</button><button class="primary" id="nextSpeedStepBtn" type="button">下一步</button></div>
+    <div class="dialog-actions"><button class="secondary" id="cancelSingleModuleBtn" type="button">取消</button><button class="primary" id="nextSpeedStepBtn" type="button">下一步：填写正确数</button></div>
   </dialog>
 
   <div class="pip-source" aria-hidden="true">

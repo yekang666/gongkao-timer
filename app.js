@@ -255,9 +255,31 @@ function finishSpeedSession() {
 
 function openSpeedSaveDialog() {
   state.pendingSpeed.step = 'questions';
-  $('#singleLapMessage').textContent = `本次正计时 ${formatClock(state.pendingSpeed.duration)}，请先输入刷题数量。`;
-  $('#speedQuestionCount').value = '1'; $('#speedCorrectCount').value = '0'; $('#speedCountWrap').classList.remove('hidden'); $('#speedCorrectWrap').classList.add('hidden'); $('#singleModulePicker').classList.add('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
+  $('#speedQuestionCount').value = '1'; $('#speedCorrectCount').value = ''; $('#speedCountWrap').classList.remove('hidden'); $('#speedCorrectWrap').classList.add('hidden'); $('#singleModulePicker').classList.add('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
+  updateSpeedDialogStep('questions', {
+    title: '这组做了多少题？',
+    message: `本次正计时 ${formatClock(state.pendingSpeed.duration)}，先填写本轮实际完成的题数。`,
+    nextLabel: '下一步：填写正确数'
+  });
   $('#singleModuleDialog').showModal();
+  $('#speedQuestionCount').focus(); $('#speedQuestionCount').select();
+}
+
+function updateSpeedDialogStep(step, { title, message, nextLabel = '' }) {
+  const steps = ['questions', 'correct', 'type'], currentIndex = steps.indexOf(step);
+  const labels = { questions: '填写题量', correct: '核对正确数', type: '选择分类' };
+  $('#singleModuleDialog').dataset.step = step;
+  $('#singleDialogIcon').textContent = String(currentIndex + 1);
+  $('#singleDialogKicker').textContent = `第 ${currentIndex + 1} 步 · ${labels[step]}`;
+  $('#singleDialogTitle').textContent = title;
+  $('#singleLapMessage').textContent = message;
+  $$('[data-speed-indicator]').forEach((indicator, index) => {
+    indicator.classList.toggle('active', index === currentIndex);
+    indicator.classList.toggle('completed', index < currentIndex);
+    if (index === currentIndex) indicator.setAttribute('aria-current', 'step');
+    else indicator.removeAttribute('aria-current');
+  });
+  $('#nextSpeedStepBtn').textContent = nextLabel;
 }
 
 function showSpeedNextStep() {
@@ -269,19 +291,30 @@ function showSpeedNextStep() {
 function showSpeedCorrectStep() {
   const questions = Math.floor(Number($('#speedQuestionCount').value) || 0);
   if (questions < 1) { showToast('请先输入刷题数量'); $('#speedQuestionCount').focus(); return; }
+  hideToast();
   state.pendingSpeed.questions = questions; state.pendingSpeed.step = 'correct';
-  $('#speedCorrectCount').max = String(questions); $('#speedCorrectCount').value = String(questions);
-  $('#singleLapMessage').textContent = `共 ${questions} 题，请输入正确数量。`;
+  $('#speedCorrectCount').max = String(questions); $('#speedCorrectCount').value = ''; $('#speedCorrectCount').placeholder = `0 - ${questions}`;
+  $('#speedCorrectHint').textContent = `请输入 0 到 ${questions}，此处不会默认按全部正确填写`;
   $('#speedCountWrap').classList.add('hidden'); $('#speedCorrectWrap').classList.remove('hidden');
+  updateSpeedDialogStep('correct', {
+    title: '这组做对了多少题？',
+    message: `上一步记录了 ${questions} 题。请核对后主动填写正确数量。`,
+    nextLabel: '下一步：选择分类'
+  });
+  $('#speedCorrectCount').focus();
 }
 
 function showSpeedTypeStep() {
   const questions = state.pendingSpeed.questions || 1;
   const correct = toNonNegativeInt($('#speedCorrectCount').value);
   if (correct === null || correct > questions) { showToast(`正确数量需在 0 到 ${questions} 之间`); $('#speedCorrectCount').focus(); return; }
+  hideToast();
   state.pendingSpeed.correct = correct; state.pendingSpeed.step = 'type';
-  $('#singleLapMessage').textContent = `正确 ${correct}/${questions} 题，请选择本次刷题类型。`;
   $('#speedCorrectWrap').classList.add('hidden'); $('#nextSpeedStepBtn').classList.add('hidden');
+  updateSpeedDialogStep('type', {
+    title: '最后，选择刷题类型',
+    message: `已记录 ${questions} 题、正确 ${correct} 题（${formatAccuracy(correct, questions)}），点击对应分类即可保存。`
+  });
   const picker = $('#singleModulePicker'); picker.innerHTML = '';
   TRACKING_CATEGORIES.forEach(moduleName => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'module-choice'; button.textContent = moduleName;
@@ -300,6 +333,7 @@ function saveSpeedSession(moduleName) {
 
 function resetSpeedSaveDialog() {
   $('#speedCountWrap').classList.remove('hidden'); $('#speedCorrectWrap').classList.add('hidden'); $('#singleModulePicker').classList.add('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
+  updateSpeedDialogStep('questions', { title: '这组做了多少题？', message: '', nextLabel: '下一步：填写正确数' });
 }
 
 function cancelSpeedSession() {
@@ -402,6 +436,7 @@ async function importDataFile(file) {
 function playBeep() { try { const ctx = new AudioContext(); [0,.2,.4].forEach(delay => { const o=ctx.createOscillator(),g=ctx.createGain(); o.frequency.value=760;o.connect(g);g.connect(ctx.destination);g.gain.setValueAtTime(.18,ctx.currentTime+delay);g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+delay+.12);o.start(ctx.currentTime+delay);o.stop(ctx.currentTime+delay+.13); }); } catch {} }
 function stopInterval() { clearInterval(state.interval); state.interval = null; }
 function showToast(message) { const el=$('#toast'); el.textContent=message;el.classList.remove('hidden');clearTimeout(el._timer);el._timer=setTimeout(()=>el.classList.add('hidden'),2200); }
+function hideToast() { const el=$('#toast'); clearTimeout(el._timer); el.classList.add('hidden'); }
 function resetFinishDialog() {
   $('#scoreInputWrap').classList.add('hidden'); $('#questionInputWrap').classList.add('hidden'); $('#correctInputWrap').classList.add('hidden'); $('#quantityChoiceWrap').classList.add('hidden');
   $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').textContent = '保存记录';

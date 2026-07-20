@@ -530,6 +530,39 @@ body.dark .drawer h2, body.dark dialog h2, body.dark .section-title h3 { color: 
 .history-module-review { padding: 3px 7px; border-radius: 3px; background: var(--accent-2); color: var(--accent); font-size: 10px; }
 body.dark .mock-module-row { background: var(--surface-2); }
 
+#mockReportDialog { width: min(660px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow: auto; text-align: left; }
+#mockReportDialog > .dialog-kicker, #mockReportDialog > h2, #mockReportDialog > p { text-align: center; }
+.mock-report-summary { display: grid; grid-template-columns: repeat(3, 1fr); margin: 18px 0 12px; border: 1px solid var(--line); }
+.mock-report-summary > span { display: grid; gap: 4px; padding: 11px 12px; border-right: 1px solid var(--line); }
+.mock-report-summary > span:last-child { border-right: 0; }
+.mock-report-summary small, .mock-report-row span { color: var(--muted); font-size: 10px; }
+.mock-report-summary strong { color: var(--text); font-family: Consolas, "SFMono-Regular", monospace; font-size: 15px; }
+.mock-report-summary > span:first-child strong { color: var(--accent); }
+.mock-report-insights { display: grid; gap: 6px; margin: 0 0 12px; }
+.mock-report-insights p { margin: 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-2); color: var(--text); font-size: 12px; }
+.mock-report-list { display: grid; max-height: 380px; gap: 5px; overflow-y: auto; padding-right: 2px; }
+.mock-report-row { display: grid; grid-template-columns: minmax(86px, 1fr) minmax(88px, .8fr) minmax(118px, 1fr); gap: 12px; align-items: center; padding: 11px 12px; border: 1px solid var(--line); border-radius: 5px; background: transparent; }
+.mock-report-row > div { display: grid; gap: 3px; min-width: 0; }
+.mock-report-row > div + div { padding-left: 12px; border-left: 1px solid var(--line); }
+.mock-report-row strong { color: var(--text); font-size: 13px; }
+.mock-report-row small { color: var(--muted); font-size: 11px; }
+.mock-report-row.incomplete > div:nth-child(2) strong { color: var(--muted); }
+.mock-report-timing.behind strong, .mock-report-timing.behind small { color: var(--warning); }
+#mockReportDialog .dialog-actions { justify-content: center; }
+#mockReportDialog .dialog-actions .primary { min-width: 132px; }
+body.dark .mock-report-insights p { background: var(--surface-2); }
+
+@media (max-width: 640px) {
+  #mockReportDialog { padding: 22px 18px; }
+  .mock-report-summary > span { padding: 9px 8px; }
+  .mock-report-summary strong { font-size: 12px; }
+  .mock-report-list { max-height: calc(100dvh - 420px); }
+  .mock-report-row { grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; }
+  .mock-report-row > div:first-child { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; }
+  .mock-report-row > div + div { padding-left: 8px; }
+  .mock-report-row > div:nth-child(2) { border-left: 0; }
+}
+
 @media (max-width: 640px) {
   #mockModuleDialog { padding: 22px 18px; }
   .mock-module-list { max-height: calc(100dvh - 390px); }

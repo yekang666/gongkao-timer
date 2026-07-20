@@ -12,7 +12,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">考</span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.2.0</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.3.0</span></div><small>训练工作台</small></div>
       </div>
       <div class="top-actions">
         <button class="icon-button" id="pipBtn" type="button" title="开启悬浮计时" aria-label="开启悬浮计时">▣</button>
@@ -150,6 +150,17 @@
     <div class="mock-module-summary" id="mockModuleSummary"></div>
     <div class="mock-module-list" id="mockModuleList"></div>
     <div class="dialog-actions"><button class="secondary" id="skipMockModuleBtn" type="button">跳过模块复盘</button><button class="primary" id="saveMockModuleBtn" type="button">保存并继续</button></div>
+  </dialog>
+
+  <dialog id="mockReportDialog">
+    <div class="dialog-icon">▤</div>
+    <span class="dialog-kicker">行测模考报告</span>
+    <h2 id="mockReportTitle">本次模考结论</h2>
+    <p id="mockReportMessage"></p>
+    <div class="mock-report-summary" id="mockReportSummary"></div>
+    <div class="mock-report-insights" id="mockReportInsights"></div>
+    <div class="mock-report-list" id="mockReportList"></div>
+    <div class="dialog-actions"><button class="primary" id="closeMockReportBtn" type="button">完成</button></div>
   </dialog>
 
   <dialog id="lapDetailDialog">

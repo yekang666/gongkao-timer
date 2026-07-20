@@ -512,14 +512,12 @@ function openMockModuleReview(result) {
 function finishMockModuleReview(skip = false) {
   const pending = state.pendingTimed;
   if (!pending || pending.step !== 'modules') return;
-  const moduleResults = skip ? [] : pending.modulePlan.reduce((results, item) => {
+  const moduleResults = skip ? [] : pending.modulePlan.map(item => {
     const input = $(`[data-mock-module-correct="${item.module}"]`), correct = toNonNegativeInt(input?.value);
-    if (correct === null) return results;
-    if (correct > item.questions) { input.focus(); showToast(`${item.module}正确数量需在 0 到 ${item.questions} 之间`); results.invalid = true; return results; }
-    results.push({ ...item, correct });
-    return results;
-  }, []);
-  if (moduleResults.invalid) return;
+    if (correct !== null && correct > item.questions) { input.focus(); showToast(`${item.module}正确数量需在 0 到 ${item.questions} 之间`); return null; }
+    return { ...item, correct };
+  });
+  if (moduleResults.includes(null)) return;
   state.pendingTimed = null; $('#mockModuleDialog').close();
   beginTimedMeta({ ...pending.result, moduleResults });
 }
@@ -533,9 +531,62 @@ function finalizeTimedSession(questions, papers, correct = null, score = null, m
   const savedRecord = saveSession(questions, papers, correct, score, state.laps, meta, moduleResults); state.status = 'finished'; render(); syncNativeVideoTime(true);
   const accuracyText = questions && correct !== null ? `，正确率 ${formatAccuracy(correct, questions)}` : '';
   const scoreText = score !== null ? `，分数 ${formatScore(score)}` : '';
-  const moduleText = moduleResults.length ? `，已复盘 ${moduleResults.length} 个模块` : '';
+  const reviewedModuleCount = normalizeModuleResults(moduleResults).filter(result => result.correct !== null).length;
+  const moduleText = reviewedModuleCount ? `，已复盘 ${reviewedModuleCount} 个模块` : '';
   showToast(`${papers ? `已保存：${papers} 套卷子` : '训练记录已保存'}${scoreText}${accuracyText}${moduleText}`);
-  if (savedRecord?.laps.length) openLapDetail(savedRecord.id);
+  if (savedRecord?.module === '行测模考') openMockReport(savedRecord.id);
+  else if (savedRecord?.laps.length) openLapDetail(savedRecord.id);
+}
+
+function getMockReportRows(record) {
+  const savedResults = normalizeModuleResults(record.moduleResults), savedByModule = new Map(savedResults.map(result => [result.module, result]));
+  const savedOrder = savedResults.map(result => result.module), fallbackOrder = getOrderedSectionPresets().map(preset => preset.name);
+  const order = [...savedOrder, ...fallbackOrder.filter(name => !savedOrder.includes(name))];
+  return order.map(module => {
+    const saved = savedByModule.get(module), preset = PRESETS.section.find(item => item.name === module);
+    return { module, questions: MOCK_PACING_QUESTION_COUNTS[module], correct: saved?.correct ?? null, duration: saved?.duration ?? null, planned: saved?.planned ?? preset?.seconds ?? null };
+  });
+}
+
+function getMockReportInsights(record, rows) {
+  const insights = [], reviewed = rows.filter(row => row.correct !== null), timed = rows.filter(row => row.duration !== null && row.planned);
+  const priorScores = state.records.filter(item => item.id !== record.id && item.module === '行测模考').map(item => toScore(item.score)).filter(Number.isFinite);
+  const score = toScore(record.score);
+  if (score !== null && priorScores.length) {
+    const average = priorScores.reduce((sum, value) => sum + value, 0) / priorScores.length, delta = score - average;
+    insights.push(Math.abs(delta) < 1 ? '本次成绩接近个人历史均分。' : `本次成绩较个人历史均分${delta > 0 ? '高' : '低'} ${Math.abs(Math.round(delta * 10) / 10)} 分。`);
+  }
+  if (reviewed.length) {
+    const weakest = [...reviewed].sort((a, b) => a.correct / a.questions - b.correct / b.questions)[0];
+    insights.push(`优先复盘 ${weakest.module}，本次正确率 ${formatAccuracy(weakest.correct, weakest.questions)}。`);
+  } else insights.push('尚未填写模块正确数，补充后可定位薄弱模块。');
+  if (timed.length) {
+    const behind = [...timed].sort((a, b) => (b.duration - b.planned) - (a.duration - a.planned))[0], delta = behind.duration - behind.planned;
+    insights.push(delta > 0 ? `${behind.module} 比时间目标慢 ${formatShortClock(delta)}。` : '已完整打点的模块均未超过时间目标。');
+  } else insights.push('完整逐题打点后，这里会显示各模块实际用时。');
+  return insights;
+}
+
+function openMockReport(recordId) {
+  const record = state.records.find(item => item.id === recordId);
+  if (!record || record.module !== '行测模考') return;
+  const rows = getMockReportRows(record), reviewed = rows.filter(row => row.correct !== null), timed = rows.filter(row => row.duration !== null), score = toScore(record.score);
+  $('#mockReportTitle').textContent = `${new Date(record.endedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })} 行测模考结论`;
+  $('#mockReportMessage').textContent = `本次用时 ${formatClock(record.duration)}${score !== null ? `，得分 ${formatScore(score)}` : ''}。`;
+  $('#mockReportSummary').innerHTML = `<span><small>模考得分</small><strong>${score === null ? '暂无' : formatScore(score)}</strong></span><span><small>模块正确数</small><strong>${reviewed.length}/${rows.length}</strong></span><span><small>完整打点</small><strong>${timed.length}/${rows.length}</strong></span>`;
+  $('#mockReportInsights').innerHTML = getMockReportInsights(record, rows).map(insight => `<p>${escapeHTML(insight)}</p>`).join('');
+  $('#mockReportList').innerHTML = rows.map(row => {
+    const accuracy = row.correct === null ? '待填写' : formatAccuracy(row.correct, row.questions);
+    const accuracyMeta = row.correct === null ? `${row.questions} 题` : `${row.correct}/${row.questions} 题`;
+    const delta = row.duration !== null && row.planned ? row.duration - row.planned : null;
+    const timing = row.duration === null ? `目标 ${formatShortClock(row.planned)}` : `实际 ${formatShortClock(row.duration)}`;
+    const timingMeta = delta === null ? '未完整打点' : (delta > 0 ? `慢 ${formatShortClock(delta)}` : `快 ${formatShortClock(Math.abs(delta))}`);
+    return `<article class="mock-report-row${row.correct === null ? ' incomplete' : ''}"><div><strong>${escapeHTML(row.module)}</strong><small>${row.questions} 题</small></div><div><span>正确率</span><strong>${accuracy}</strong><small>${accuracyMeta}</small></div><div class="mock-report-timing${delta !== null && delta > 0 ? ' behind' : ''}"><span>用时</span><strong>${timing}</strong><small>${timingMeta}</small></div></article>`;
+  }).join('');
+  const dialog = $('#mockReportDialog');
+  if (!dialog.open) dialog.showModal();
+  dialog.scrollTop = 0;
+  dialog.focus({ preventScroll: true });
 }
 
 function resetTrainingMetaDialog() {
@@ -853,7 +904,7 @@ function getDayKey(date) { return `${date.getFullYear()}-${String(date.getMonth(
 
 function getModuleAnalytics(records, moduleName) {
   const directRows = records.filter(record => record.module === moduleName);
-  const mockModuleRows = records.flatMap(record => normalizeModuleResults(record.moduleResults).filter(result => result.module === moduleName).map(result => ({ ...result, id: `${record.id}:${result.module}`, endedAt: record.endedAt, source: record.source, difficulty: record.difficulty })));
+  const mockModuleRows = records.flatMap(record => normalizeModuleResults(record.moduleResults).filter(result => result.module === moduleName && (result.correct !== null || result.duration !== null)).map(result => ({ ...result, id: `${record.id}:${result.module}`, endedAt: record.endedAt, source: record.source, difficulty: record.difficulty })));
   const rows = [...directRows, ...mockModuleRows], questionRows = rows.filter(record => toPositiveInt(record.questions));
   const questions = questionRows.reduce((sum, record) => sum + toPositiveInt(record.questions), 0);
   const correct = questionRows.reduce((sum, record) => sum + (toNonNegativeInt(record.correct) ?? 0), 0);
@@ -1119,6 +1170,7 @@ function renderStats() {
     const accuracyText = hasAccuracy(r) ? ` · 正确 ${r.correct}/${r.questions} · 正确率 ${formatAccuracy(r.correct, r.questions)}` : '';
     const scoreText = toScore(r.score) !== null ? ` · ${formatScore(toScore(r.score))}` : '';
     const lapCount = normalizeLaps(r.laps).length, reviewCounts = getLapReviewCounts(normalizeLapReviews(r.lapReviews, lapCount), lapCount);
+    const reportLink = r.module === '行测模考' ? `<button class="lap-detail-button" data-mock-report-id="${escapeAttribute(r.id)}" type="button">查看模考报告</button>` : '';
     const lapLink = lapCount ? `<button class="lap-detail-button" data-lap-id="${escapeAttribute(r.id)}" type="button">${reviewCounts.reviewed ? `逐题复盘 ${reviewCounts.reviewed}/${lapCount} 题` : `开始 ${lapCount} 题逐题复盘`}</button>` : '';
     const tags = [r.source ? `<span class="record-tag source">来源：${escapeHTML(r.source)}</span>` : '', r.difficulty ? `<span class="record-tag difficulty">${r.difficulty}</span>` : ''].filter(Boolean).join('');
     const notePreview = r.note ? (r.note.length > 120 ? `${r.note.slice(0, 120)}…` : r.note) : '';
@@ -1126,10 +1178,11 @@ function renderStats() {
     const moduleReviewHtml = reviewedModuleResults.length ? `<span class="history-module-review">模块复盘 ${reviewedModuleResults.length}/${MOCK_MODULE_NAMES.length} 项${weakestModule ? ` · ${escapeHTML(weakestModule.module)} ${formatAccuracy(weakestModule.correct, weakestModule.questions)}` : ''}</span>` : '';
     const metaHtml = tags || notePreview || moduleReviewHtml ? `<div class="record-meta-tags">${tags}${moduleReviewHtml}</div>${notePreview ? `<span class="history-note">“${escapeHTML(notePreview)}”</span>` : ''}` : '';
     const benchmark = getHistoryBenchmark(r), benchmarkHtml = benchmark ? `<span class="history-benchmark">相对基准 · ${benchmark}</span>` : '';
-    return `<div class="history-row"><div class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${benchmarkHtml}${metaHtml}${lapLink}</div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${escapeHTML(r.id)}" title="删除记录">×</button></div>`;
+    return `<div class="history-row"><div class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${benchmarkHtml}${metaHtml}${reportLink}${lapLink}</div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${escapeHTML(r.id)}" title="删除记录">×</button></div>`;
   }).join('') : `<div class="empty-state">${historyFilter ? '没有符合筛选条件的记录' : '完成一次训练后，记录会显示在这里'}</div>`;
   $$('.delete-record').forEach(btn => btn.addEventListener('click', () => { if (!confirm('确定删除这条训练记录吗？此操作无法撤销。')) return; state.records = state.records.filter(r => r.id !== btn.dataset.id); saveRecords(); renderStats(); }));
   $$('.lap-detail-button').forEach(btn => btn.addEventListener('click', () => openLapDetail(btn.dataset.lapId)));
+  $$('[data-mock-report-id]').forEach(btn => btn.addEventListener('click', () => openMockReport(btn.dataset.mockReportId)));
 }
 
 function applySettings() {
@@ -1397,6 +1450,7 @@ $$('#difficultyChoices [data-difficulty]').forEach(button => button.addEventList
 $('#skipTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(true)); $('#confirmTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(false));
 $('#skipMockModuleBtn').addEventListener('click', () => finishMockModuleReview(true)); $('#saveMockModuleBtn').addEventListener('click', () => finishMockModuleReview(false));
 $('#mockModuleDialog').addEventListener('cancel', event => { event.preventDefault(); finishMockModuleReview(true); });
+$('#closeMockReportBtn').addEventListener('click', () => $('#mockReportDialog').close());
 $('#trainingMetaDialog').addEventListener('cancel', event => { event.preventDefault(); finishTrainingMeta(true); });
 $('#lapDetailList').addEventListener('click', updateLapReviewFromClick); $('#lapDetailList').addEventListener('input', updateLapReviewNote);
 $('#saveLapReviewBtn').addEventListener('click', saveLapReviews); $('#closeLapDetailBtn').addEventListener('click', closeLapDetail);

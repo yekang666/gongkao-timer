@@ -496,30 +496,47 @@ function getMockModuleReviewPlan(laps = state.laps) {
   });
 }
 
-function openMockModuleReview(result) {
-  state.pendingTimed = { step: 'modules', result, modulePlan: getMockModuleReviewPlan() };
+function openMockModuleReview(result, options = {}) {
+  const editingRecord = options.record || null;
+  state.pendingTimed = { step: 'modules', result, modulePlan: editingRecord ? getMockReportRows(editingRecord) : getMockModuleReviewPlan(), editingRecordId: editingRecord?.id || null };
   const plan = state.pendingTimed.modulePlan;
   const dotted = plan.filter(item => item.duration !== null).length;
-  $('#mockModuleSummary').innerHTML = `<span>总分 <strong>${formatScore(result.score)}</strong></span><span>已完整打点 <strong>${dotted}/${plan.length} 个模块</strong></span>`;
+  const editing = Boolean(editingRecord);
+  $('#mockModuleTitle').textContent = editing ? '修正模考模块数据' : '各模块做对多少题？';
+  $('#mockModuleMessage').textContent = editing ? '修改后的正确数、总分和训练信息将更新原训练记录，并重新计算统计。' : '题量和时间目标取自当前专项配置。可只填写已核对的模块，完成逐题打点的模块会同时记录实际用时。';
+  $('#mockModuleScoreWrap').classList.toggle('hidden', !editing); $('#mockModuleScore').value = editing && toScore(editingRecord.score) !== null ? String(toScore(editingRecord.score)) : '';
+  $('#mockModuleSummary').innerHTML = `<span>${editing ? '当前总分' : '总分'} <strong>${formatScore(result.score)}</strong></span><span>已完整打点 <strong>${dotted}/${plan.length} 个模块</strong></span>`;
   $('#mockModuleList').innerHTML = plan.map(item => {
     const timing = item.duration === null ? `目标 ${formatShortClock(item.planned)} · 未完整打点` : `实际 ${formatShortClock(item.duration)} / 目标 ${formatShortClock(item.planned)}`;
-    return `<label class="mock-module-row"><span><strong>${item.module}</strong><small>${item.questions} 题 · ${timing}</small></span><span class="mock-module-input"><input data-mock-module-correct="${item.module}" type="number" min="0" max="${item.questions}" step="1" inputmode="numeric" placeholder="正确数" aria-label="${item.module}正确数量"><em>/ ${item.questions}</em></span></label>`;
+    return `<label class="mock-module-row"><span><strong>${item.module}</strong><small>${item.questions} 题 · ${timing}</small></span><span class="mock-module-input"><input data-mock-module-correct="${item.module}" type="number" min="0" max="${item.questions}" step="1" inputmode="numeric" value="${item.correct ?? ''}" placeholder="正确数" aria-label="${item.module}正确数量"><em>/ ${item.questions}</em></span></label>`;
   }).join('');
+  $('#skipMockModuleBtn').textContent = editing ? '取消修改' : '跳过模块复盘'; $('#saveMockModuleBtn').textContent = editing ? '下一步：训练信息' : '保存并继续';
   $('#mockModuleDialog').showModal();
-  $('#mockModuleList input').focus();
+  (editing ? $('#mockModuleScore') : $('#mockModuleList input')).focus();
 }
 
 function finishMockModuleReview(skip = false) {
   const pending = state.pendingTimed;
   if (!pending || pending.step !== 'modules') return;
+  if (skip && pending.editingRecordId) { const recordId = pending.editingRecordId; state.pendingTimed = null; $('#mockModuleDialog').close(); openMockReport(recordId); return; }
   const moduleResults = skip ? [] : pending.modulePlan.map(item => {
     const input = $(`[data-mock-module-correct="${item.module}"]`), correct = toNonNegativeInt(input?.value);
     if (correct !== null && correct > item.questions) { input.focus(); showToast(`${item.module}正确数量需在 0 到 ${item.questions} 之间`); return null; }
     return { ...item, correct };
   });
   if (moduleResults.includes(null)) return;
+  let score = pending.result.score;
+  if (pending.editingRecordId) {
+    score = toScore($('#mockModuleScore').value);
+    if (score === null) { showToast('分数需在 0 到 100 之间'); $('#mockModuleScore').focus(); return; }
+  }
   state.pendingTimed = null; $('#mockModuleDialog').close();
-  beginTimedMeta({ ...pending.result, moduleResults });
+  if (pending.editingRecordId) {
+    const record = state.records.find(item => item.id === pending.editingRecordId); if (!record) return;
+    state.pendingMeta = { context: 'mock-edit', recordId: record.id, result: { score, moduleResults }, previousMeta: normalizeTrainingMeta(record) };
+    openTrainingMetaDialog('补充模考资料', state.pendingMeta.previousMeta); return;
+  }
+  beginTimedMeta({ ...pending.result, score, moduleResults });
 }
 
 function beginTimedMeta(result) {
@@ -583,10 +600,23 @@ function openMockReport(recordId) {
     const timingMeta = delta === null ? '未完整打点' : (delta > 0 ? `慢 ${formatShortClock(delta)}` : `快 ${formatShortClock(Math.abs(delta))}`);
     return `<article class="mock-report-row${row.correct === null ? ' incomplete' : ''}"><div><strong>${escapeHTML(row.module)}</strong><small>${row.questions} 题</small></div><div><span>正确率</span><strong>${accuracy}</strong><small>${accuracyMeta}</small></div><div class="mock-report-timing${delta !== null && delta > 0 ? ' behind' : ''}"><span>用时</span><strong>${timing}</strong><small>${timingMeta}</small></div></article>`;
   }).join('');
+  $('#editMockReportBtn').dataset.mockReportId = record.id;
+  $('#openReportLapReviewBtn').dataset.lapId = record.id; $('#openReportLapReviewBtn').classList.toggle('hidden', !normalizeLaps(record.laps).length);
   const dialog = $('#mockReportDialog');
   if (!dialog.open) dialog.showModal();
   dialog.scrollTop = 0;
   dialog.focus({ preventScroll: true });
+}
+
+function editMockReport(recordId) {
+  const record = state.records.find(item => item.id === recordId); if (!record || record.module !== '行测模考') return;
+  $('#mockReportDialog').close();
+  openMockModuleReview({ score: toScore(record.score) }, { record });
+}
+
+function openReportLapReview(recordId) {
+  $('#mockReportDialog').close();
+  openLapDetail(recordId);
 }
 
 function resetTrainingMetaDialog() {
@@ -594,8 +624,13 @@ function resetTrainingMetaDialog() {
   $$('#trainingMetaDialog [aria-pressed]').forEach(button => { button.classList.remove('selected'); button.setAttribute('aria-pressed', 'false'); });
 }
 
-function openTrainingMetaDialog(title) {
+function openTrainingMetaDialog(title, initialMeta = null) {
   resetTrainingMetaDialog(); $('#trainingMetaTitle').textContent = title;
+  if (initialMeta) {
+    $('#trainingSource').value = initialMeta.source || ''; $('#trainingNote').value = initialMeta.note || '';
+    const selected = initialMeta.difficulty ? $(`#difficultyChoices [data-difficulty="${initialMeta.difficulty}"]`) : null;
+    if (selected) { selected.classList.add('selected'); selected.setAttribute('aria-pressed', 'true'); }
+  }
   $('#trainingMetaDialog').showModal(); $('#trainingSource').focus();
 }
 
@@ -609,12 +644,17 @@ function readTrainingMeta() {
 
 function finishTrainingMeta(skip = false) {
   const pending = state.pendingMeta; if (!pending) return;
-  const meta = skip ? normalizeTrainingMeta() : readTrainingMeta();
+  const meta = skip ? (pending.context === 'mock-edit' ? pending.previousMeta : normalizeTrainingMeta()) : readTrainingMeta();
   state.pendingMeta = null; $('#trainingMetaDialog').close();
   if (pending.context === 'timed') {
     const { questions, papers, correct, score, moduleResults = [] } = pending.result;
     finalizeTimedSession(questions, papers, correct, score, meta, moduleResults);
   } else if (pending.context === 'speed') finalizeSpeedSession(pending.moduleName, meta);
+  else if (pending.context === 'mock-edit') {
+    const record = state.records.find(item => item.id === pending.recordId); if (!record) return;
+    record.score = pending.result.score; record.moduleResults = normalizeModuleResults(pending.result.moduleResults); Object.assign(record, meta, { updatedAt: new Date().toISOString() });
+    saveRecords(); renderStats(); showToast('模考报告已更新'); openMockReport(record.id);
+  }
 }
 
 function finishSpeedSession() {
@@ -1451,6 +1491,8 @@ $('#skipTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(tru
 $('#skipMockModuleBtn').addEventListener('click', () => finishMockModuleReview(true)); $('#saveMockModuleBtn').addEventListener('click', () => finishMockModuleReview(false));
 $('#mockModuleDialog').addEventListener('cancel', event => { event.preventDefault(); finishMockModuleReview(true); });
 $('#closeMockReportBtn').addEventListener('click', () => $('#mockReportDialog').close());
+$('#editMockReportBtn').addEventListener('click', () => editMockReport($('#editMockReportBtn').dataset.mockReportId));
+$('#openReportLapReviewBtn').addEventListener('click', () => openReportLapReview($('#openReportLapReviewBtn').dataset.lapId));
 $('#trainingMetaDialog').addEventListener('cancel', event => { event.preventDefault(); finishTrainingMeta(true); });
 $('#lapDetailList').addEventListener('click', updateLapReviewFromClick); $('#lapDetailList').addEventListener('input', updateLapReviewNote);
 $('#saveLapReviewBtn').addEventListener('click', saveLapReviews); $('#closeLapDetailBtn').addEventListener('click', closeLapDetail);

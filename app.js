@@ -19,6 +19,7 @@ const STORAGE_SETTINGS = 'examTimer.settings.v1';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
+const MOCK_MODULE_NAMES = PRESETS.section.map(preset => preset.name);
 const TRAINING_DIFFICULTIES = ['简单', '正常', '较难'];
 const SPEED_SCORE_TYPES = new Set(PRESETS.mock.map(preset => preset.name));
 const LAP_REVIEW_STATUSES = ['correct', 'wrong', 'skipped'];
@@ -78,6 +79,26 @@ function normalizeLapReviews(reviews, lapCount = 500) {
   while (normalized.length && !normalized[normalized.length - 1]) normalized.pop();
   return normalized;
 }
+function normalizeModuleResults(results) {
+  if (!Array.isArray(results)) return [];
+  const seen = new Set();
+  return results.reduce((normalized, result) => {
+    if (!result || typeof result !== 'object' || !MOCK_MODULE_NAMES.includes(result.module) || seen.has(result.module)) return normalized;
+    const questions = MOCK_PACING_QUESTION_COUNTS[result.module];
+    const correct = toNonNegativeInt(result.correct);
+    const duration = Number(result.duration);
+    const planned = Number(result.planned);
+    seen.add(result.module);
+    normalized.push({
+      module: result.module,
+      questions,
+      correct: correct === null ? null : Math.min(correct, questions),
+      duration: Number.isFinite(duration) && duration > 0 ? Math.round(duration) : null,
+      planned: Number.isFinite(planned) && planned > 0 ? Math.round(planned) : null
+    });
+    return normalized;
+  }, []);
+}
 function escapeHTML(value) { const element = document.createElement('span'); element.textContent = String(value ?? ''); return element.innerHTML; }
 function escapeAttribute(value) { return escapeHTML(value).replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
 
@@ -89,6 +110,7 @@ function normalizeRecords(records) {
     const score = toScore(record.score);
     const laps = normalizeLaps(record.laps);
     const lapReviews = normalizeLapReviews(record.lapReviews, laps.length);
+    const moduleResults = normalizeModuleResults(record.moduleResults);
     const meta = normalizeTrainingMeta(record);
     const normalizedRecord = { ...record };
     delete normalizedRecord.overtime;
@@ -100,6 +122,7 @@ function normalizeRecords(records) {
       score,
       laps,
       lapReviews,
+      moduleResults,
       ...meta
     };
   });
@@ -452,7 +475,53 @@ function saveTimedCorrectSession() {
   const correct = state.pendingTimed.score ? null : toNonNegativeInt($('#finishCorrectCount').value);
   if (!state.pendingTimed.score && (correct === null || correct > questions)) { showToast(`正确数量需在 0 到 ${questions} 之间`); $('#finishCorrectCount').focus(); return; }
   const papers = state.pendingTimed.papers;
-  state.pendingTimed = null; $('#finishDialog').close(); resetFinishDialog(); beginTimedMeta({ questions, papers, correct, score });
+  const result = { questions, papers, correct, score };
+  $('#finishDialog').close(); resetFinishDialog();
+  if (state.pendingTimed.score && state.mode === 'mock' && state.preset.name === '行测模考') { openMockModuleReview(result); return; }
+  state.pendingTimed = null; beginTimedMeta(result);
+}
+
+function getMockModuleReviewPlan(laps = state.laps) {
+  const values = normalizeLaps(laps), orderedPresets = getOrderedSectionPresets();
+  let cursor = 0;
+  return orderedPresets.map(preset => {
+    const questions = MOCK_PACING_QUESTION_COUNTS[preset.name], moduleLaps = values.slice(cursor, cursor + questions);
+    cursor += questions;
+    return {
+      module: preset.name,
+      questions,
+      planned: preset.seconds,
+      duration: moduleLaps.length === questions ? Math.round(moduleLaps.reduce((sum, value) => sum + value, 0)) : null
+    };
+  });
+}
+
+function openMockModuleReview(result) {
+  state.pendingTimed = { step: 'modules', result, modulePlan: getMockModuleReviewPlan() };
+  const plan = state.pendingTimed.modulePlan;
+  const dotted = plan.filter(item => item.duration !== null).length;
+  $('#mockModuleSummary').innerHTML = `<span>总分 <strong>${formatScore(result.score)}</strong></span><span>已完整打点 <strong>${dotted}/${plan.length} 个模块</strong></span>`;
+  $('#mockModuleList').innerHTML = plan.map(item => {
+    const timing = item.duration === null ? `目标 ${formatShortClock(item.planned)} · 未完整打点` : `实际 ${formatShortClock(item.duration)} / 目标 ${formatShortClock(item.planned)}`;
+    return `<label class="mock-module-row"><span><strong>${item.module}</strong><small>${item.questions} 题 · ${timing}</small></span><span class="mock-module-input"><input data-mock-module-correct="${item.module}" type="number" min="0" max="${item.questions}" step="1" inputmode="numeric" placeholder="正确数" aria-label="${item.module}正确数量"><em>/ ${item.questions}</em></span></label>`;
+  }).join('');
+  $('#mockModuleDialog').showModal();
+  $('#mockModuleList input').focus();
+}
+
+function finishMockModuleReview(skip = false) {
+  const pending = state.pendingTimed;
+  if (!pending || pending.step !== 'modules') return;
+  const moduleResults = skip ? [] : pending.modulePlan.reduce((results, item) => {
+    const input = $(`[data-mock-module-correct="${item.module}"]`), correct = toNonNegativeInt(input?.value);
+    if (correct === null) return results;
+    if (correct > item.questions) { input.focus(); showToast(`${item.module}正确数量需在 0 到 ${item.questions} 之间`); results.invalid = true; return results; }
+    results.push({ ...item, correct });
+    return results;
+  }, []);
+  if (moduleResults.invalid) return;
+  state.pendingTimed = null; $('#mockModuleDialog').close();
+  beginTimedMeta({ ...pending.result, moduleResults });
 }
 
 function beginTimedMeta(result) {
@@ -460,11 +529,12 @@ function beginTimedMeta(result) {
   openTrainingMetaDialog(`${state.preset.name} · 训练复盘`);
 }
 
-function finalizeTimedSession(questions, papers, correct = null, score = null, meta = {}) {
-  const savedRecord = saveSession(questions, papers, correct, score, state.laps, meta); state.status = 'finished'; render(); syncNativeVideoTime(true);
+function finalizeTimedSession(questions, papers, correct = null, score = null, meta = {}, moduleResults = []) {
+  const savedRecord = saveSession(questions, papers, correct, score, state.laps, meta, moduleResults); state.status = 'finished'; render(); syncNativeVideoTime(true);
   const accuracyText = questions && correct !== null ? `，正确率 ${formatAccuracy(correct, questions)}` : '';
   const scoreText = score !== null ? `，分数 ${formatScore(score)}` : '';
-  showToast(`${papers ? `已保存：${papers} 套卷子` : '训练记录已保存'}${scoreText}${accuracyText}`);
+  const moduleText = moduleResults.length ? `，已复盘 ${moduleResults.length} 个模块` : '';
+  showToast(`${papers ? `已保存：${papers} 套卷子` : '训练记录已保存'}${scoreText}${accuracyText}${moduleText}`);
   if (savedRecord?.laps.length) openLapDetail(savedRecord.id);
 }
 
@@ -491,8 +561,8 @@ function finishTrainingMeta(skip = false) {
   const meta = skip ? normalizeTrainingMeta() : readTrainingMeta();
   state.pendingMeta = null; $('#trainingMetaDialog').close();
   if (pending.context === 'timed') {
-    const { questions, papers, correct, score } = pending.result;
-    finalizeTimedSession(questions, papers, correct, score, meta);
+    const { questions, papers, correct, score, moduleResults = [] } = pending.result;
+    finalizeTimedSession(questions, papers, correct, score, meta, moduleResults);
   } else if (pending.context === 'speed') finalizeSpeedSession(pending.moduleName, meta);
 }
 
@@ -637,9 +707,9 @@ function getDefaultQuestionCount() {
   return state.mode === 'section' ? (SECTION_QUESTION_COUNTS[state.preset.name] || null) : null;
 }
 
-function saveSession(questions, papers = null, correct = null, score = null, laps = [], meta = {}) {
+function saveSession(questions, papers = null, correct = null, score = null, laps = [], meta = {}, moduleResults = []) {
   if (state.elapsed < 1) return null;
-  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt: new Date().toISOString(), questions, papers, correct, score, laps: normalizeLaps(laps), lapReviews: [], ...normalizeTrainingMeta(meta) };
+  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt: new Date().toISOString(), questions, papers, correct, score, laps: normalizeLaps(laps), lapReviews: [], moduleResults: normalizeModuleResults(moduleResults), ...normalizeTrainingMeta(meta) };
   state.records.unshift(savedRecord);
   state.records = state.records.slice(0, 500); saveRecords(); renderStats(); return savedRecord;
 }
@@ -782,13 +852,17 @@ function getPeriodRecords(days, offset = 0, now = new Date()) {
 function getDayKey(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
 
 function getModuleAnalytics(records, moduleName) {
-  const rows = records.filter(record => record.module === moduleName), questionRows = rows.filter(record => toPositiveInt(record.questions));
+  const directRows = records.filter(record => record.module === moduleName);
+  const mockModuleRows = records.flatMap(record => normalizeModuleResults(record.moduleResults).filter(result => result.module === moduleName).map(result => ({ ...result, id: `${record.id}:${result.module}`, endedAt: record.endedAt, source: record.source, difficulty: record.difficulty })));
+  const rows = [...directRows, ...mockModuleRows], questionRows = rows.filter(record => toPositiveInt(record.questions));
   const questions = questionRows.reduce((sum, record) => sum + toPositiveInt(record.questions), 0);
   const correct = questionRows.reduce((sum, record) => sum + (toNonNegativeInt(record.correct) ?? 0), 0);
   const accuracyQuestions = questionRows.filter(record => toNonNegativeInt(record.correct) !== null).reduce((sum, record) => sum + toPositiveInt(record.questions), 0);
   const accuracyCorrect = questionRows.filter(record => toNonNegativeInt(record.correct) !== null).reduce((sum, record) => sum + toNonNegativeInt(record.correct), 0);
-  const pace = questions ? questionRows.reduce((sum, record) => sum + record.duration, 0) / questions : null;
-  const paces = questionRows.map(record => record.duration / record.questions).filter(Number.isFinite);
+  const timedRows = questionRows.filter(record => Number.isFinite(record.duration) && record.duration > 0);
+  const pacedQuestions = timedRows.reduce((sum, record) => sum + record.questions, 0);
+  const pace = pacedQuestions ? timedRows.reduce((sum, record) => sum + record.duration, 0) / pacedQuestions : null;
+  const paces = timedRows.map(record => record.duration / record.questions).filter(Number.isFinite);
   const mean = paces.length ? paces.reduce((sum, value) => sum + value, 0) / paces.length : null;
   const deviation = paces.length >= 3 ? Math.sqrt(paces.reduce((sum, value) => sum + (value - mean) ** 2, 0) / paces.length) : null;
   const stability = deviation !== null && mean ? deviation / mean : null;
@@ -1031,14 +1105,13 @@ function renderStats() {
   $('#todayDuration').textContent = formatDuration(today.reduce((n,r)=>n+r.duration,0)); $('#weekCount').textContent = `${week.length} 次`; $('#weekDuration').textContent = formatDuration(week.reduce((n,r)=>n+r.duration,0)); $('#weekAccuracy').textContent = formatAccuracy(weekAccuracy.correct, weekAccuracy.questions); $('#weekScore').textContent = formatScore(weekScore);
   renderPersonalAnalytics(now);
   const modules = TRACKING_CATEGORIES; $('#moduleStats').innerHTML = modules.map(name => {
-    const rows = state.records.filter(r => r.module === name), avg = rows.length ? rows.reduce((n,r)=>n+r.duration,0)/rows.length : 0;
-    const questionRows = rows.filter(r => r.questions), avgPerQuestion = questionRows.length ? questionRows.reduce((n,r)=>n+r.duration/r.questions,0)/questionRows.length : 0;
-    const accuracy = getAccuracyTotals(rows);
-    const avgScore = getScoreAverage(rows);
-    const paperRows = rows.filter(r => r.papers), paperText = paperRows.length ? ` / ${paperRows.reduce((n,r)=>n+r.papers,0)} 套` : '';
+    const analytics = getModuleAnalytics(state.records, name), directRows = state.records.filter(r => r.module === name), timedRows = analytics.rows.filter(row => Number.isFinite(row.duration) && row.duration > 0), avg = timedRows.length ? timedRows.reduce((n,r)=>n+r.duration,0)/timedRows.length : 0;
+    const avgPerQuestion = analytics.pace || 0;
+    const avgScore = getScoreAverage(directRows);
+    const paperRows = directRows.filter(r => r.papers), paperText = paperRows.length ? ` / ${paperRows.reduce((n,r)=>n+r.papers,0)} 套` : '';
     const scoreText = avgScore !== null ? ` / 均分 ${formatScore(avgScore)}` : '';
-    const accuracyText = accuracy.questions ? ` / ${accuracy.correct}/${accuracy.questions} 正确 / 正确率 ${formatAccuracy(accuracy.correct, accuracy.questions)}` : '';
-    return `<div class="module-row"><strong>${name}</strong><span>${rows.length ? formatDuration(avg) : '暂无记录'}${paperText}${scoreText}${avgPerQuestion ? ` / 题均 ${formatClock(avgPerQuestion).slice(3)}` : ''}${accuracyText}</span></div>`;
+    const accuracyText = analytics.accuracyQuestions ? ` / ${analytics.correct}/${analytics.accuracyQuestions} 正确 / 正确率 ${formatAccuracy(analytics.correct, analytics.accuracyQuestions)}` : '';
+    return `<div class="module-row"><strong>${name}</strong><span>${analytics.rows.length ? (timedRows.length ? formatDuration(avg) : '已录入复盘') : '暂无记录'}${paperText}${scoreText}${avgPerQuestion ? ` / 题均 ${formatClock(avgPerQuestion).slice(3)}` : ''}${accuracyText}</span></div>`;
   }).join('');
   const historyFilter = $('#historyFilter')?.value || '';
   const filteredRecords = state.records.filter(record => recordMatchesHistoryFilter(record, historyFilter));
@@ -1049,7 +1122,9 @@ function renderStats() {
     const lapLink = lapCount ? `<button class="lap-detail-button" data-lap-id="${escapeAttribute(r.id)}" type="button">${reviewCounts.reviewed ? `逐题复盘 ${reviewCounts.reviewed}/${lapCount} 题` : `开始 ${lapCount} 题逐题复盘`}</button>` : '';
     const tags = [r.source ? `<span class="record-tag source">来源：${escapeHTML(r.source)}</span>` : '', r.difficulty ? `<span class="record-tag difficulty">${r.difficulty}</span>` : ''].filter(Boolean).join('');
     const notePreview = r.note ? (r.note.length > 120 ? `${r.note.slice(0, 120)}…` : r.note) : '';
-    const metaHtml = tags || notePreview ? `<div class="record-meta-tags">${tags}</div>${notePreview ? `<span class="history-note">“${escapeHTML(notePreview)}”</span>` : ''}` : '';
+    const moduleResults = normalizeModuleResults(r.moduleResults), reviewedModuleResults = moduleResults.filter(result => result.correct !== null), weakestModule = reviewedModuleResults.sort((a, b) => a.correct / a.questions - b.correct / b.questions)[0];
+    const moduleReviewHtml = reviewedModuleResults.length ? `<span class="history-module-review">模块复盘 ${reviewedModuleResults.length}/${MOCK_MODULE_NAMES.length} 项${weakestModule ? ` · ${escapeHTML(weakestModule.module)} ${formatAccuracy(weakestModule.correct, weakestModule.questions)}` : ''}</span>` : '';
+    const metaHtml = tags || notePreview || moduleReviewHtml ? `<div class="record-meta-tags">${tags}${moduleReviewHtml}</div>${notePreview ? `<span class="history-note">“${escapeHTML(notePreview)}”</span>` : ''}` : '';
     const benchmark = getHistoryBenchmark(r), benchmarkHtml = benchmark ? `<span class="history-benchmark">相对基准 · ${benchmark}</span>` : '';
     return `<div class="history-row"><div class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${benchmarkHtml}${metaHtml}${lapLink}</div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${escapeHTML(r.id)}" title="删除记录">×</button></div>`;
   }).join('') : `<div class="empty-state">${historyFilter ? '没有符合筛选条件的记录' : '完成一次训练后，记录会显示在这里'}</div>`;
@@ -1320,6 +1395,8 @@ $$('#difficultyChoices [data-difficulty]').forEach(button => button.addEventList
   if (willSelect) { button.classList.add('selected'); button.setAttribute('aria-pressed', 'true'); }
 }));
 $('#skipTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(true)); $('#confirmTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(false));
+$('#skipMockModuleBtn').addEventListener('click', () => finishMockModuleReview(true)); $('#saveMockModuleBtn').addEventListener('click', () => finishMockModuleReview(false));
+$('#mockModuleDialog').addEventListener('cancel', event => { event.preventDefault(); finishMockModuleReview(true); });
 $('#trainingMetaDialog').addEventListener('cancel', event => { event.preventDefault(); finishTrainingMeta(true); });
 $('#lapDetailList').addEventListener('click', updateLapReviewFromClick); $('#lapDetailList').addEventListener('input', updateLapReviewNote);
 $('#saveLapReviewBtn').addEventListener('click', saveLapReviews); $('#closeLapDetailBtn').addEventListener('click', closeLapDetail);

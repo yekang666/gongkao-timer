@@ -12,7 +12,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">考</span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.1.0</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.2.0</span></div><small>训练工作台</small></div>
       </div>
       <div class="top-actions">
         <button class="icon-button" id="pipBtn" type="button" title="开启悬浮计时" aria-label="开启悬浮计时">▣</button>
@@ -140,6 +140,16 @@
     <fieldset class="meta-group"><legend>本次难度</legend><div class="meta-choice-row" id="difficultyChoices"><button data-difficulty="简单" type="button" aria-pressed="false">简单</button><button data-difficulty="正常" type="button" aria-pressed="false">正常</button><button data-difficulty="较难" type="button" aria-pressed="false">较难</button></div></fieldset>
     <label class="meta-field"><span>复盘备注</span><textarea id="trainingNote" maxlength="500" rows="3" placeholder="例如：资料分析最后一组耗时偏长，下次先看材料结构"></textarea></label>
     <div class="dialog-actions"><button class="secondary" id="skipTrainingMetaBtn" type="button">跳过并保存</button><button class="primary" id="confirmTrainingMetaBtn" type="button">保存记录</button></div>
+  </dialog>
+
+  <dialog id="mockModuleDialog">
+    <div class="dialog-icon">≡</div>
+    <span class="dialog-kicker">行测模考复盘</span>
+    <h2>各模块做对多少题？</h2>
+    <p>题量和时间目标取自当前专项配置。可只填写已核对的模块，完成逐题打点的模块会同时记录实际用时。</p>
+    <div class="mock-module-summary" id="mockModuleSummary"></div>
+    <div class="mock-module-list" id="mockModuleList"></div>
+    <div class="dialog-actions"><button class="secondary" id="skipMockModuleBtn" type="button">跳过模块复盘</button><button class="primary" id="saveMockModuleBtn" type="button">保存并继续</button></div>
   </dialog>
 
   <dialog id="lapDetailDialog">

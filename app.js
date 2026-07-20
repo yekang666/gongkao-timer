@@ -30,7 +30,7 @@ const state = {
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
   laps: [], lastLapElapsed: 0, pacingNotified: [],
-  pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, lapReviewDraft: [], records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
+  pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, lapReviewDraft: [], analyticsDays: 7, records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
   settings: { sound: true, pacing: true, dark: false, fontSize: 1, warning: 60, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
@@ -772,6 +772,136 @@ function saveLapReviews() {
   showToast(counts.reviewed ? `逐题复盘已保存：已标记 ${counts.reviewed}/${stats.values.length} 题` : '记录已保留，可稍后在历史记录中补充逐题复盘');
 }
 
+function getPeriodRecords(days, offset = 0, now = new Date()) {
+  const end = new Date(now); end.setHours(23, 59, 59, 999); end.setDate(end.getDate() - days * offset);
+  const start = new Date(end); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - days + 1);
+  return state.records.filter(record => { const date = new Date(record.endedAt); return Number.isFinite(date.getTime()) && date >= start && date <= end; });
+}
+
+function getDayKey(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
+
+function getModuleAnalytics(records, moduleName) {
+  const rows = records.filter(record => record.module === moduleName), questionRows = rows.filter(record => toPositiveInt(record.questions));
+  const questions = questionRows.reduce((sum, record) => sum + toPositiveInt(record.questions), 0);
+  const correct = questionRows.reduce((sum, record) => sum + (toNonNegativeInt(record.correct) ?? 0), 0);
+  const accuracyQuestions = questionRows.filter(record => toNonNegativeInt(record.correct) !== null).reduce((sum, record) => sum + toPositiveInt(record.questions), 0);
+  const accuracyCorrect = questionRows.filter(record => toNonNegativeInt(record.correct) !== null).reduce((sum, record) => sum + toNonNegativeInt(record.correct), 0);
+  const pace = questions ? questionRows.reduce((sum, record) => sum + record.duration, 0) / questions : null;
+  const paces = questionRows.map(record => record.duration / record.questions).filter(Number.isFinite);
+  const mean = paces.length ? paces.reduce((sum, value) => sum + value, 0) / paces.length : null;
+  const deviation = paces.length >= 3 ? Math.sqrt(paces.reduce((sum, value) => sum + (value - mean) ** 2, 0) / paces.length) : null;
+  const stability = deviation !== null && mean ? deviation / mean : null;
+  return { rows, sessions: rows.length, questions, correct, pace, paces, stability, accuracy: accuracyQuestions ? accuracyCorrect / accuracyQuestions * 100 : null, accuracyQuestions };
+}
+
+function getStabilityLabel(value, samples) {
+  if (samples < 3 || value === null) return '待积累';
+  if (value <= .15) return '稳定';
+  if (value <= .3) return '有波动';
+  return '波动较大';
+}
+
+function getWeaknessScore(stats, targetPace) {
+  if (stats.sessions < 2 || stats.questions < 5) return -1;
+  let score = 0;
+  if (stats.accuracy !== null && stats.accuracyQuestions >= 10) score += Math.max(0, 80 - stats.accuracy) * 1.6;
+  if (stats.pace && targetPace) score += Math.max(0, stats.pace / targetPace - 1) * 60;
+  if (stats.stability !== null) score += Math.max(0, stats.stability - .25) * 40;
+  return score;
+}
+
+function getModuleAdvice(stats, previous, targetPace) {
+  const parts = [];
+  if (stats.accuracy !== null && stats.accuracyQuestions >= 10 && stats.accuracy < 75) parts.push(`正确率 ${formatAccuracy(stats.accuracy, 100)}，先稳住正确率`);
+  else if (stats.pace && targetPace && stats.pace > targetPace * 1.15) parts.push(`题均比时间目标慢 ${Math.round((stats.pace / targetPace - 1) * 100)}%`);
+  else if (stats.stability !== null && stats.stability > .3) parts.push('近期用时波动较大');
+  else parts.push('近期节奏较稳定');
+  if (stats.pace && previous.pace && previous.questions >= 5) {
+    const delta = (stats.pace / previous.pace - 1) * 100;
+    if (Math.abs(delta) >= 5) parts.push(`较前期${delta < 0 ? '快' : '慢'} ${Math.abs(Math.round(delta))}%`);
+  }
+  if (stats.accuracy !== null && previous.accuracy !== null && stats.accuracyQuestions >= 10 && previous.accuracyQuestions >= 10) {
+    const delta = stats.accuracy - previous.accuracy;
+    if (Math.abs(delta) >= 3) parts.push(`正确率较前期${delta > 0 ? '提升' : '下降'} ${Math.abs(Math.round(delta))} 个百分点`);
+  }
+  return parts.join(' · ');
+}
+
+function renderTrainingTrend(now) {
+  const days = state.analyticsDays, current = getPeriodRecords(days, 0, now), previous = getPeriodRecords(days, 1, now);
+  const buckets = Array.from({ length: days }, (_, index) => {
+    const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - days + index + 1);
+    return { date, key: getDayKey(date), duration: 0, count: 0 };
+  }), byKey = new Map(buckets.map(bucket => [bucket.key, bucket]));
+  current.forEach(record => { const bucket = byKey.get(getDayKey(new Date(record.endedAt))); if (bucket) { bucket.duration += record.duration; bucket.count += 1; } });
+  const total = current.reduce((sum, record) => sum + record.duration, 0), previousTotal = previous.reduce((sum, record) => sum + record.duration, 0), activeDays = buckets.filter(bucket => bucket.count).length;
+  const delta = previousTotal ? (total / previousTotal - 1) * 100 : null;
+  $('#trendPeriodSummary').textContent = delta === null ? `最近 ${days} 天 · 暂无上一周期基准` : `最近 ${days} 天 · 较前期${delta >= 0 ? '增加' : '减少'} ${Math.abs(Math.round(delta))}%`;
+  $('#trendSummary').innerHTML = `<span><small>训练</small><strong>${current.length} 次</strong></span><span><small>累计</small><strong>${formatDuration(total)}</strong></span><span><small>活跃</small><strong>${activeDays} 天</strong></span>`;
+  const maxDuration = Math.max(...buckets.map(bucket => bucket.duration), 1);
+  $('#trendChart').innerHTML = `<div class="trend-bars days-${days}">${buckets.map((bucket, index) => {
+    const ratio = bucket.duration ? Math.max(7, bucket.duration / maxDuration * 100) : 0;
+    const showLabel = days === 7 || index === 0 || index === days - 1 || (index % 7 === 0 && index < days - 2);
+    const label = `${bucket.date.getMonth() + 1}/${bucket.date.getDate()}`;
+    return `<div class="trend-day" title="${escapeAttribute(`${label} · ${formatDuration(bucket.duration)} · ${bucket.count} 次`)}"><div class="trend-bar-track"><i style="height:${ratio}%"></i></div><small>${showLabel ? label : ''}</small></div>`;
+  }).join('')}</div>`;
+}
+
+function renderModuleBaselines(now) {
+  const days = state.analyticsDays, current = getPeriodRecords(days, 0, now), previous = getPeriodRecords(days, 1, now);
+  const analytics = PRESETS.section.map(preset => {
+    const stats = getModuleAnalytics(current, preset.name), previousStats = getModuleAnalytics(previous, preset.name);
+    const targetQuestions = MOCK_PACING_QUESTION_COUNTS[preset.name] || SECTION_QUESTION_COUNTS[preset.name], targetPace = targetQuestions ? preset.seconds / targetQuestions : null;
+    return { preset, stats, previousStats, targetPace, weakness: getWeaknessScore(stats, targetPace) };
+  });
+  const sufficient = analytics.filter(item => item.weakness >= 0).sort((a, b) => b.weakness - a.weakness), priority = sufficient[0]?.weakness >= 8 ? sufficient[0].preset.name : null;
+  $('#baselineList').innerHTML = sufficient.length ? sufficient.map(item => {
+    const { preset, stats, previousStats, targetPace } = item, paceGoal = stats.pace && targetPace ? (stats.pace <= targetPace ? '达到目标' : `慢 ${Math.round((stats.pace / targetPace - 1) * 100)}%`) : '暂无目标对比';
+    return `<article class="baseline-card${preset.name === priority ? ' priority' : ''}"><div class="baseline-heading"><strong>${preset.name}</strong>${preset.name === priority ? '<em>优先提升</em>' : ''}<span>${stats.sessions} 次 · ${stats.questions} 题</span></div><div class="baseline-metrics"><span><small>题均</small><strong>${stats.pace ? formatClock(stats.pace).slice(3) : '暂无'}</strong><i>${paceGoal}</i></span><span><small>正确率</small><strong>${stats.accuracy !== null ? formatAccuracy(stats.accuracy, 100) : '暂无'}</strong><i>${stats.accuracyQuestions} 题样本</i></span><span><small>稳定性</small><strong>${getStabilityLabel(stats.stability, stats.paces.length)}</strong><i>${stats.paces.length} 次样本</i></span></div><p>${getModuleAdvice(stats, previousStats, targetPace)}</p></article>`;
+  }).join('') : '<div class="analytics-empty">每个专项至少完成 2 次且累计 5 题后，才会生成个人基准。</div>';
+  const insufficient = analytics.filter(item => item.weakness < 0 && item.stats.sessions).map(item => item.preset.name);
+  $('#baselineDataNote').classList.toggle('hidden', !insufficient.length || !sufficient.length);
+  $('#baselineDataNote').textContent = insufficient.length ? `仍需积累：${insufficient.join('、')}（至少 2 次且累计 5 题）` : '';
+}
+
+function renderReasonTrends(now) {
+  const records = getPeriodRecords(state.analyticsDays, 0, now), counts = Object.fromEntries(LAP_ERROR_REASONS.map(reason => [reason, 0]));
+  let wrong = 0;
+  records.forEach(record => normalizeLapReviews(record.lapReviews, normalizeLaps(record.laps).length).forEach(review => {
+    if (review?.status !== 'wrong') return; wrong += 1; if (review.reason) counts[review.reason] += 1;
+  }));
+  const ranked = LAP_ERROR_REASONS.filter(reason => counts[reason]).sort((a, b) => counts[b] - counts[a]), max = Math.max(...ranked.map(reason => counts[reason]), 1), reasonTotal = ranked.reduce((sum, reason) => sum + counts[reason], 0);
+  $('#reasonTrendList').innerHTML = ranked.length ? `<p class="reason-insight">最常见错因：<strong>${ranked[0]}</strong> · ${counts[ranked[0]]} 题</p>${ranked.map(reason => `<div class="reason-trend-row"><span>${reason}</span><div><i style="width:${counts[reason] / max * 100}%"></i></div><strong>${counts[reason]} 题 · ${Math.round(counts[reason] / reasonTotal * 100)}%</strong></div>`).join('')}` : `<div class="analytics-empty">${wrong ? `已标记 ${wrong} 道错题，但尚未填写具体错因。` : '完成逐题错误标记后，这里会汇总具体错因。'}</div>`;
+}
+
+function getHistoryBenchmark(record) {
+  const endedAt = new Date(record.endedAt).getTime(); if (!Number.isFinite(endedAt)) return '';
+  const prior = state.records.filter(item => item.id !== record.id && item.module === record.module && new Date(item.endedAt).getTime() < endedAt).sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt)).slice(0, 30);
+  const parts = [], score = toScore(record.score), priorScores = prior.map(item => toScore(item.score)).filter(Number.isFinite);
+  if (score !== null && priorScores.length >= 3) {
+    const average = priorScores.reduce((sum, value) => sum + value, 0) / priorScores.length, delta = score - average;
+    parts.push(Math.abs(delta) < 1 ? '成绩接近个人均分' : `较个人均分 ${delta > 0 ? '+' : ''}${delta.toFixed(1)} 分`);
+  } else if (hasAccuracy(record)) {
+    const priorAccuracy = getAccuracyTotals(prior), current = record.correct / record.questions * 100, baseline = priorAccuracy.questions ? priorAccuracy.correct / priorAccuracy.questions * 100 : null;
+    if (baseline !== null && priorAccuracy.questions >= 10) { const delta = current - baseline; parts.push(Math.abs(delta) < 2 ? '正确率接近个人基准' : `正确率较基准 ${delta > 0 ? '+' : ''}${Math.round(delta)} 个百分点`); }
+  }
+  if (record.questions) {
+    const paceRows = prior.filter(item => item.questions).slice(0, 20);
+    if (paceRows.length >= 3) {
+      const baseline = paceRows.reduce((sum, item) => sum + item.duration, 0) / paceRows.reduce((sum, item) => sum + item.questions, 0), delta = (record.duration / record.questions / baseline - 1) * 100;
+      parts.push(Math.abs(delta) < 3 ? '速度接近个人基准' : `比个人均速${delta < 0 ? '快' : '慢'} ${Math.abs(Math.round(delta))}%`);
+    }
+  }
+  return parts.slice(0, 2).join(' · ');
+}
+
+function renderPersonalAnalytics(now) {
+  $$('[data-analytics-days]').forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.analyticsDays) === state.analyticsDays)));
+  $('#baselinePeriodSummary').textContent = `最近 ${state.analyticsDays} 天 · 速度 / 正确率 / 稳定性`;
+  $('#reasonPeriodSummary').textContent = `最近 ${state.analyticsDays} 天 · 仅统计逐题错误标记`;
+  renderTrainingTrend(now); renderModuleBaselines(now); renderReasonTrends(now);
+}
+
 function recordMatchesHistoryFilter(record, filter) {
   if (!filter) return true;
   const separator = filter.indexOf(':'), type = filter.slice(0, separator), value = filter.slice(separator + 1);
@@ -786,6 +916,7 @@ function renderStats() {
   const weekAccuracy = getAccuracyTotals(week);
   const weekScore = getScoreAverage(week.filter(r => SPEED_SCORE_TYPES.has(r.module)));
   $('#todayDuration').textContent = formatDuration(today.reduce((n,r)=>n+r.duration,0)); $('#weekCount').textContent = `${week.length} 次`; $('#weekDuration').textContent = formatDuration(week.reduce((n,r)=>n+r.duration,0)); $('#weekAccuracy').textContent = formatAccuracy(weekAccuracy.correct, weekAccuracy.questions); $('#weekScore').textContent = formatScore(weekScore);
+  renderPersonalAnalytics(now);
   const modules = TRACKING_CATEGORIES; $('#moduleStats').innerHTML = modules.map(name => {
     const rows = state.records.filter(r => r.module === name), avg = rows.length ? rows.reduce((n,r)=>n+r.duration,0)/rows.length : 0;
     const questionRows = rows.filter(r => r.questions), avgPerQuestion = questionRows.length ? questionRows.reduce((n,r)=>n+r.duration/r.questions,0)/questionRows.length : 0;
@@ -806,7 +937,8 @@ function renderStats() {
     const tags = [r.source ? `<span class="record-tag source">来源：${escapeHTML(r.source)}</span>` : '', r.difficulty ? `<span class="record-tag difficulty">${r.difficulty}</span>` : ''].filter(Boolean).join('');
     const notePreview = r.note ? (r.note.length > 120 ? `${r.note.slice(0, 120)}…` : r.note) : '';
     const metaHtml = tags || notePreview ? `<div class="record-meta-tags">${tags}</div>${notePreview ? `<span class="history-note">“${escapeHTML(notePreview)}”</span>` : ''}` : '';
-    return `<div class="history-row"><div class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${metaHtml}${lapLink}</div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${escapeHTML(r.id)}" title="删除记录">×</button></div>`;
+    const benchmark = getHistoryBenchmark(r), benchmarkHtml = benchmark ? `<span class="history-benchmark">相对基准 · ${benchmark}</span>` : '';
+    return `<div class="history-row"><div class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${benchmarkHtml}${metaHtml}${lapLink}</div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${escapeHTML(r.id)}" title="删除记录">×</button></div>`;
   }).join('') : `<div class="empty-state">${historyFilter ? '没有符合筛选条件的记录' : '完成一次训练后，记录会显示在这里'}</div>`;
   $$('.delete-record').forEach(btn => btn.addEventListener('click', () => { if (!confirm('确定删除这条训练记录吗？此操作无法撤销。')) return; state.records = state.records.filter(r => r.id !== btn.dataset.id); saveRecords(); renderStats(); }));
   $$('.lap-detail-button').forEach(btn => btn.addEventListener('click', () => openLapDetail(btn.dataset.lapId)));
@@ -1082,6 +1214,7 @@ $('#lapDetailDialog').addEventListener('cancel', event => { event.preventDefault
 $('#statsBtn').addEventListener('click',()=>{renderStats();openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>openDrawer($('#settingsDrawer')));$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
 $('#historyFilter').addEventListener('change', renderStats);
+$$('[data-analytics-days]').forEach(button => button.addEventListener('click', () => { state.analyticsDays = Number(button.dataset.analyticsDays); renderStats(); }));
 $('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#saveSectionTimesBtn').addEventListener('click', saveSectionTimes);

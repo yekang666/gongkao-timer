@@ -12,7 +12,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">考</span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v1.8.1</span></div><small>专注每一次提速</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v1.9.0</span></div><small>专注每一次提速</small></div>
       </div>
       <div class="top-actions">
         <button class="icon-button" id="pipBtn" type="button" title="开启悬浮计时" aria-label="开启悬浮计时">▣</button>
@@ -74,7 +74,10 @@
       <article><span>本周正确率</span><strong id="weekAccuracy">暂无</strong></article>
       <article><span>本周模考均分</span><strong id="weekScore">暂无</strong></article>
     </div>
-    <section class="drawer-section"><div class="section-title"><h3>专项表现</h3><span>平均用时 / 正确率</span></div><div class="module-stats" id="moduleStats"></div></section>
+    <section class="drawer-section analytics-section"><div class="section-title"><div><h3>近期训练趋势</h3><span id="trendPeriodSummary">训练时长与活跃度</span></div><div class="period-switch" aria-label="趋势统计周期"><button data-analytics-days="7" type="button" aria-pressed="true">7 天</button><button data-analytics-days="30" type="button" aria-pressed="false">30 天</button></div></div><div class="trend-summary" id="trendSummary"></div><div class="trend-chart" id="trendChart"></div></section>
+    <section class="drawer-section analytics-section"><div class="section-title"><div><h3>个人题型基准</h3><span id="baselinePeriodSummary">最近 7 天 · 速度 / 正确率 / 稳定性</span></div></div><div class="baseline-list" id="baselineList"></div><div class="analytics-note hidden" id="baselineDataNote"></div></section>
+    <section class="drawer-section analytics-section"><div class="section-title"><div><h3>题目错因趋势</h3><span id="reasonPeriodSummary">最近 7 天 · 仅统计逐题错误标记</span></div></div><div class="reason-trend-list" id="reasonTrendList"></div></section>
+    <section class="drawer-section"><div class="section-title"><h3>专项历史总览</h3><span>全部记录</span></div><div class="module-stats" id="moduleStats"></div></section>
     <section class="drawer-section grow"><div class="section-title"><h3>最近记录</h3><div class="history-tools"><select id="historyFilter" aria-label="筛选训练记录"><option value="">全部记录</option><optgroup label="难度"><option value="difficulty:简单">简单</option><option value="difficulty:正常">正常</option><option value="difficulty:较难">较难</option></optgroup></select><button class="danger-link" id="clearAllBtn" type="button">清空全部</button></div></div><div class="history-list" id="historyList"></div></section>
   </aside>
 

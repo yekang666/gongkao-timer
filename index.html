@@ -12,7 +12,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">考</span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.4.4</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.5.0</span></div><small>训练工作台</small></div>
       </div>
       <div class="top-actions">
         <button class="icon-button" id="pipBtn" type="button" title="开启悬浮计时" aria-label="开启悬浮计时">▣</button>
@@ -107,8 +107,8 @@
         <div class="setting-block section-time-settings"><span><strong>专项时间与模考节奏</strong><small>时间按比例映射到行测模考；长按卡片后拖动可调整答题顺序</small></span><div class="section-time-grid" id="sectionTimeGrid" aria-label="专项时间和模考顺序"></div><p class="pacing-order-note" id="pacingOrderNote" aria-live="polite"></p><button class="primary" id="saveSectionTimesBtn" type="button">保存专项时间</button></div>
       </section>
       <section class="settings-panel hidden" data-settings-panel="data">
-        <div class="setting-block data-tools"><span><strong>完整备份</strong><small>导出或导入全部设置、专项时间、答题顺序和复盘记录</small></span><div class="data-actions"><button class="secondary" id="exportDataBtn" type="button">导出完整备份</button><button class="primary" id="importDataBtn" type="button">导入数据</button><input class="hidden" id="importDataInput" type="file" accept="application/json,.json"></div></div>
-        <div class="privacy-note"><strong>数据仅保存在当前设备</strong><p>训练记录、专项时间配置和个人设置使用浏览器本地存储，不会上传。</p></div>
+        <div class="setting-block data-tools"><span><strong>备份与恢复</strong><small>备份包含全部设置、专项时间、答题顺序和复盘记录；恢复前会先预览。</small></span><div class="data-health" aria-label="数据体检"><span><small>本机记录</small><strong id="dataRecordCount">0 条</strong></span><span><small>备份范围</small><strong>设置 + 记录</strong></span><span><small>恢复方式</small><strong>先预览</strong></span></div><div class="data-actions"><button class="secondary" id="exportDataBtn" type="button">下载备份文件</button><button class="primary" id="importDataBtn" type="button">恢复备份</button><button class="secondary" id="exportCsvBtn" type="button">导出记录表</button><input class="hidden" id="importDataInput" type="file" accept=".gktimer,.json,application/json"></div></div>
+        <div class="privacy-note"><strong>数据仅保存在当前设备</strong><p>备份文件由你自己保存；恢复只会写回当前浏览器，不会上传。</p></div>
       </section>
     </div>
   </aside>
@@ -151,6 +151,16 @@
     <fieldset class="meta-group"><legend>本次难度</legend><div class="meta-choice-row" id="difficultyChoices"><button data-difficulty="简单" type="button" aria-pressed="false">简单</button><button data-difficulty="正常" type="button" aria-pressed="false">正常</button><button data-difficulty="较难" type="button" aria-pressed="false">较难</button></div></fieldset>
     <label class="meta-field"><span>复盘备注</span><textarea id="trainingNote" maxlength="500" rows="3" placeholder="例如：资料分析最后一组耗时偏长，下次先看材料结构"></textarea></label>
     <div class="dialog-actions"><button class="secondary" id="skipTrainingMetaBtn" type="button">跳过并保存</button><button class="primary" id="confirmTrainingMetaBtn" type="button">保存记录</button></div>
+  </dialog>
+
+  <dialog id="restorePreviewDialog">
+    <div class="dialog-icon">↺</div>
+    <span class="dialog-kicker">恢复前确认</span>
+    <h2>确认恢复这份备份吗？</h2>
+    <p id="restorePreviewMessage">恢复会替换当前设备上的设置和训练记录。</p>
+    <div class="restore-preview-grid" id="restorePreviewDetails"></div>
+    <div class="restore-warning">恢复后，当前浏览器里的现有数据会被这份备份覆盖。建议先下载一份当前备份再继续。</div>
+    <div class="dialog-actions"><button class="secondary" id="cancelRestoreBtn" type="button">取消</button><button class="primary" id="confirmRestoreBtn" type="button">确认恢复</button></div>
   </dialog>
 
   <dialog id="mockModuleDialog">

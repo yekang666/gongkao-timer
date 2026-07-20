@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.4.4';
+const APP_VERSION = 'v2.5.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -32,7 +32,7 @@ const state = {
   mode: 'mock', preset: PRESETS.mock[0], duration: PRESETS.mock[0].seconds,
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
-  laps: [], lastLapElapsed: 0, pacingNotified: [],
+  laps: [], lastLapElapsed: 0, pacingNotified: [], pendingImport: null,
   pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', trendVisual: 'bar', statsView: 'overview', settingsView: 'general', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
   settings: { sound: true, pacing: true, dark: false, fontSize: 1, warning: 60, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
@@ -1213,6 +1213,7 @@ function recordMatchesHistoryFilter(record, filter) {
 
 function renderStats() {
   const now = new Date(), todayKey = now.toDateString(), weekStart = new Date(now); weekStart.setHours(0,0,0,0); weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  renderDataManagementSummary();
   const today = state.records.filter(r => new Date(r.endedAt).toDateString() === todayKey);
   const week = state.records.filter(r => new Date(r.endedAt) >= weekStart);
   const weekAccuracy = getAccuracyTotals(week);
@@ -1294,14 +1295,71 @@ function buildExportData() {
   };
 }
 
+function getDateStamp(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob), link = document.createElement('a');
+  link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url);
+}
+
+function renderDataManagementSummary() {
+  const count = $('#dataRecordCount');
+  if (count) count.textContent = `${state.records.length} 条`;
+}
+
 function exportData() {
   const blob = new Blob([JSON.stringify(buildExportData(), null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob), link = document.createElement('a');
-  link.href = url; link.download = `gongkao-timer-data-${new Date().toISOString().slice(0,10)}.json`; link.click(); URL.revokeObjectURL(url);
-  showToast('完整备份已导出');
+  downloadBlob(blob, `公考计时器完整备份-${getDateStamp()}.gktimer`);
+  showToast('备份文件已下载');
+}
+
+function formatExportDateTime(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function csvCell(value) {
+  const text = String(value ?? '');
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function buildRecordsCsv(records = normalizeRecords(state.records)) {
+  const modeNames = { mock: '模考模式', section: '专项模式', single: '自由测速' };
+  const headers = ['日期时间', '模式', '题型', '用时', '计划用时', '题数', '正确数', '正确率', '分数', '打点数', '来源', '难度', '备注'];
+  const rows = records.map(record => {
+    const questions = toPositiveInt(record.questions), correct = toNonNegativeInt(record.correct), score = toScore(record.score);
+    return [
+      formatExportDateTime(record.endedAt),
+      modeNames[record.mode] || record.mode || '',
+      record.module || '',
+      Number.isFinite(record.duration) ? formatClock(record.duration) : '',
+      Number.isFinite(record.planned) ? formatClock(record.planned) : '',
+      questions ?? '',
+      correct ?? '',
+      questions && correct !== null ? formatAccuracy(correct, questions) : '',
+      score !== null ? score : '',
+      Array.isArray(record.laps) ? record.laps.length : 0,
+      record.source || '',
+      record.difficulty || '',
+      record.note || ''
+    ];
+  });
+  return [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n');
+}
+
+function exportRecordsCsv() {
+  const records = normalizeRecords(state.records);
+  if (!records.length) { showToast('暂无训练记录可导出'); return; }
+  const blob = new Blob([`\ufeff${buildRecordsCsv(records)}`], { type: 'text/csv;charset=utf-8' });
+  downloadBlob(blob, `公考计时器训练记录-${getDateStamp()}.csv`);
+  showToast('训练记录表已导出');
 }
 
 function normalizeImportedData(data) {
+  if (Array.isArray(data)) return { settings: buildSettingsSnapshot(), records: normalizeRecords(data) };
   if (!data || typeof data !== 'object') throw new Error('文件格式不正确');
   const importedSettings = data.settings && typeof data.settings === 'object' ? data.settings : {};
   const importedConfiguration = data.configuration && typeof data.configuration === 'object' ? data.configuration : {};
@@ -1324,15 +1382,67 @@ function normalizeImportedData(data) {
   return { settings: mergedSettings, records: normalizeRecords(importedRecords) };
 }
 
+function buildImportPreview(rawData, normalized, fileName = '') {
+  const importedSettings = rawData && typeof rawData === 'object' && !Array.isArray(rawData) && rawData.settings && typeof rawData.settings === 'object' ? rawData.settings : {};
+  const importedConfiguration = rawData && typeof rawData === 'object' && !Array.isArray(rawData) && rawData.configuration && typeof rawData.configuration === 'object' ? rawData.configuration : {};
+  const sectionDurations = importedSettings.customDurations?.section || importedConfiguration.sectionDurations || rawData?.sectionDurations || {};
+  const sectionOrder = importedSettings.sectionOrder || importedConfiguration.sectionOrder;
+  return {
+    fileName,
+    appVersion: rawData?.appVersion || '未标注',
+    exportedAt: rawData?.exportedAt || '',
+    recordCount: normalized.records.length,
+    hasSettings: Boolean(Object.keys(importedSettings).length || Object.keys(importedConfiguration).length),
+    hasSectionDurations: Boolean(sectionDurations && typeof sectionDurations === 'object' && Object.keys(sectionDurations).length),
+    hasSectionOrder: Array.isArray(sectionOrder) && sectionOrder.length > 0
+  };
+}
+
+function renderRestorePreview(preview) {
+  $('#restorePreviewMessage').textContent = `${preview.fileName ? `文件：${preview.fileName}。` : ''}请确认这就是你想恢复到当前设备的备份。`;
+  const rows = [
+    ['备份时间', preview.exportedAt ? formatExportDateTime(preview.exportedAt) : '未标注'],
+    ['来自版本', preview.appVersion],
+    ['训练记录', `${preview.recordCount} 条`],
+    ['个人设置', preview.hasSettings ? '包含' : '未发现'],
+    ['专项时间', preview.hasSectionDurations ? '包含' : '使用默认'],
+    ['答题顺序', preview.hasSectionOrder ? '包含' : '使用默认']
+  ];
+  $('#restorePreviewDetails').innerHTML = rows.map(([label, value]) => `<span><small>${escapeHTML(label)}</small><strong>${escapeHTML(value)}</strong></span>`).join('');
+}
+
+function restoreImportedData(data) {
+  state.settings = data.settings; state.records = data.records;
+  applyCustomDurations(); saveSettings(); saveRecords();
+  if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; resetTimer(false); }
+  applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); render(); renderDataManagementSummary();
+}
+
 async function importDataFile(file) {
   if (!file) return;
   try {
-    const data = normalizeImportedData(JSON.parse(await file.text()));
-    state.settings = data.settings; state.records = data.records;
-    applyCustomDurations(); saveSettings(); saveRecords();
-    if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; resetTimer(false); }
-    applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); render(); showToast('数据已导入');
-  } catch (error) { showToast(`导入失败：${error.message}`); }
+    let rawData;
+    try { rawData = JSON.parse(await file.text()); } catch { throw new Error('文件内容无法读取'); }
+    const normalized = normalizeImportedData(rawData);
+    state.pendingImport = normalized;
+    renderRestorePreview(buildImportPreview(rawData, normalized, file.name));
+    const dialog = $('#restorePreviewDialog');
+    if (dialog.open) dialog.close();
+    dialog.showModal();
+  } catch (error) { showToast(`恢复失败：${error.message}`); }
+}
+
+function confirmRestoreImport() {
+  if (!state.pendingImport) { $('#restorePreviewDialog').close(); return; }
+  restoreImportedData(state.pendingImport);
+  state.pendingImport = null;
+  $('#restorePreviewDialog').close();
+  showToast('备份已恢复');
+}
+
+function cancelRestoreImport() {
+  state.pendingImport = null;
+  $('#restorePreviewDialog').close();
 }
 
 function playBeep() { try { const ctx = new AudioContext(); [0,.2,.4].forEach(delay => { const o=ctx.createOscillator(),g=ctx.createGain(); o.frequency.value=760;o.connect(g);g.connect(ctx.destination);g.gain.setValueAtTime(.18,ctx.currentTime+delay);g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+delay+.12);o.start(ctx.currentTime+delay);o.stop(ctx.currentTime+delay+.13); }); } catch {} }
@@ -1522,6 +1632,7 @@ async function togglePip() {
 window.state = state;
 window.resetTimer = resetTimer;
 window.buildExportData = buildExportData;
+window.buildRecordsCsv = buildRecordsCsv;
 window.normalizeImportedData = normalizeImportedData;
 window.syncNativeVideoTime = syncNativeVideoTime;
 window.getMobilePipTargetTime = getMobilePipTargetTime;
@@ -1594,6 +1705,7 @@ document.addEventListener('touchend', event => { if (sectionSort.inputType === '
 document.addEventListener('touchcancel', event => { if (sectionSort.inputType === 'touch' && [...event.changedTouches].some(item => item.identifier === sectionSort.touchId)) finishSectionSort(true); });
 document.addEventListener('contextmenu', event => { if (sectionSort.card || event.target.closest('[data-section-card]')) event.preventDefault(); });
 $('#sectionTimeGrid').addEventListener('dragstart', event => event.preventDefault());
-$('#exportDataBtn').addEventListener('click', exportData); $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click()); $('#importDataInput').addEventListener('change', e => { importDataFile(e.target.files[0]); e.target.value = ''; });
+$('#exportDataBtn').addEventListener('click', exportData); $('#exportCsvBtn').addEventListener('click', exportRecordsCsv); $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click()); $('#importDataInput').addEventListener('change', e => { importDataFile(e.target.files[0]); e.target.value = ''; });
+$('#cancelRestoreBtn').addEventListener('click', cancelRestoreImport); $('#confirmRestoreBtn').addEventListener('click', confirmRestoreImport);
 $('#pipBtn').addEventListener('click',togglePip);
-window.addEventListener('beforeunload', () => { stopInterval(); stopMobilePipSyncLoop(); }); applyCustomDurations(); applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); render();
+window.addEventListener('beforeunload', () => { stopInterval(); stopMobilePipSyncLoop(); }); applyCustomDurations(); applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); renderDataManagementSummary(); render();

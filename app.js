@@ -30,7 +30,7 @@ const state = {
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
   laps: [], lastLapElapsed: 0, pacingNotified: [],
-  pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, lapReviewDraft: [], analyticsDays: 7, statsView: 'overview', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
+  pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', statsView: 'overview', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
   settings: { sound: true, pacing: true, dark: false, fontSize: 1, warning: 60, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
@@ -827,24 +827,61 @@ function getModuleAdvice(stats, previous, targetPace) {
   return parts.join(' · ');
 }
 
+function createTrendTotals(records = []) {
+  return records.reduce((totals, record) => {
+    totals.duration += Number(record.duration) || 0; totals.count += 1;
+    const questions = toPositiveInt(record.questions), correct = toNonNegativeInt(record.correct), score = toScore(record.score);
+    if (questions) { totals.questions += questions; totals.questionSessions += 1; }
+    if (questions && correct !== null) { totals.accuracyQuestions += questions; totals.correct += Math.min(correct, questions); }
+    if (score !== null) { totals.scoreTotal += score; totals.scoreCount += 1; }
+    return totals;
+  }, { duration: 0, count: 0, questions: 0, questionSessions: 0, accuracyQuestions: 0, correct: 0, scoreTotal: 0, scoreCount: 0 });
+}
+
+function getTrendValue(totals, metric) {
+  if (metric === 'duration') return { value: totals.duration, hasData: totals.count > 0 };
+  if (metric === 'questions') return { value: totals.questions, hasData: totals.questionSessions > 0 };
+  if (metric === 'accuracy') return { value: totals.accuracyQuestions ? totals.correct / totals.accuracyQuestions * 100 : 0, hasData: totals.accuracyQuestions > 0 };
+  return { value: totals.scoreCount ? totals.scoreTotal / totals.scoreCount : 0, hasData: totals.scoreCount > 0 };
+}
+
+function formatTrendValue(metric, value) {
+  if (metric === 'duration') return formatDuration(value);
+  if (metric === 'questions') return `${Math.round(value)} 题`;
+  if (metric === 'accuracy') return `${Math.round(value * 10) / 10}%`;
+  return formatScore(value);
+}
+
 function renderTrainingTrend(now) {
-  const days = state.analyticsDays, current = getPeriodRecords(days, 0, now), previous = getPeriodRecords(days, 1, now);
+  const days = state.analyticsDays, metric = state.trendMetric, current = getPeriodRecords(days, 0, now), previous = getPeriodRecords(days, 1, now);
   const buckets = Array.from({ length: days }, (_, index) => {
     const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - days + index + 1);
-    return { date, key: getDayKey(date), duration: 0, count: 0 };
+    return { date, key: getDayKey(date), records: [] };
   }), byKey = new Map(buckets.map(bucket => [bucket.key, bucket]));
-  current.forEach(record => { const bucket = byKey.get(getDayKey(new Date(record.endedAt))); if (bucket) { bucket.duration += record.duration; bucket.count += 1; } });
-  const total = current.reduce((sum, record) => sum + record.duration, 0), previousTotal = previous.reduce((sum, record) => sum + record.duration, 0), activeDays = buckets.filter(bucket => bucket.count).length;
-  const delta = previousTotal ? (total / previousTotal - 1) * 100 : null;
-  $('#trendPeriodSummary').textContent = delta === null ? `最近 ${days} 天 · 暂无上一周期基准` : `最近 ${days} 天 · 较前期${delta >= 0 ? '增加' : '减少'} ${Math.abs(Math.round(delta))}%`;
-  $('#trendSummary').innerHTML = `<span><small>训练</small><strong>${current.length} 次</strong></span><span><small>累计</small><strong>${formatDuration(total)}</strong></span><span><small>活跃</small><strong>${activeDays} 天</strong></span>`;
-  const maxDuration = Math.max(...buckets.map(bucket => bucket.duration), 1);
-  $('#trendChart').innerHTML = `<div class="trend-bars days-${days}">${buckets.map((bucket, index) => {
-    const ratio = bucket.duration ? Math.max(7, bucket.duration / maxDuration * 100) : 0;
-    const showLabel = days === 7 || index === 0 || index === days - 1 || (index % 7 === 0 && index < days - 2);
-    const label = `${bucket.date.getMonth() + 1}/${bucket.date.getDate()}`;
-    return `<div class="trend-day" title="${escapeAttribute(`${label} · ${formatDuration(bucket.duration)} · ${bucket.count} 次`)}"><div class="trend-bar-track"><i style="height:${ratio}%"></i></div><small>${showLabel ? label : ''}</small></div>`;
-  }).join('')}</div>`;
+  current.forEach(record => { const bucket = byKey.get(getDayKey(new Date(record.endedAt))); if (bucket) bucket.records.push(record); });
+  buckets.forEach(bucket => { bucket.totals = createTrendTotals(bucket.records); bucket.metric = getTrendValue(bucket.totals, metric); });
+  const totals = createTrendTotals(current), previousTotals = createTrendTotals(previous), currentMetric = getTrendValue(totals, metric), previousMetric = getTrendValue(previousTotals, metric);
+  const activeDays = buckets.filter(bucket => bucket.metric.hasData).length, metricNames = { duration: '训练时长', questions: '刷题数量', accuracy: '正确率', score: '模考成绩' }, metricName = metricNames[metric];
+  if (!currentMetric.hasData) $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 暂无${metricName}数据`;
+  else if (!previousMetric.hasData) $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 暂无上一周期基准`;
+  else if (metric === 'accuracy' || metric === 'score') {
+    const delta = currentMetric.value - previousMetric.value, unit = metric === 'accuracy' ? ' 个百分点' : ' 分';
+    $('#trendPeriodSummary').textContent = Math.abs(delta) < .1 ? `最近 ${days} 天 · 与前期基本持平` : `最近 ${days} 天 · 较前期${delta > 0 ? '提升' : '下降'} ${Math.abs(Math.round(delta * 10) / 10)}${unit}`;
+  } else {
+    const delta = (currentMetric.value / previousMetric.value - 1) * 100;
+    $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 较前期${delta >= 0 ? '增加' : '减少'} ${Math.abs(Math.round(delta))}%`;
+  }
+  if (metric === 'duration') $('#trendSummary').innerHTML = `<span><small>训练</small><strong>${totals.count} 次</strong></span><span><small>累计</small><strong>${formatDuration(totals.duration)}</strong></span><span><small>活跃</small><strong>${activeDays} 天</strong></span>`;
+  else if (metric === 'questions') $('#trendSummary').innerHTML = `<span><small>刷题</small><strong>${totals.questions} 题</strong></span><span><small>训练</small><strong>${totals.questionSessions} 次</strong></span><span><small>活跃</small><strong>${activeDays} 天</strong></span>`;
+  else if (metric === 'accuracy') $('#trendSummary').innerHTML = `<span><small>正确率</small><strong>${currentMetric.hasData ? formatTrendValue(metric, currentMetric.value) : '暂无'}</strong></span><span><small>答对</small><strong>${totals.correct}/${totals.accuracyQuestions || 0}</strong></span><span><small>有效</small><strong>${activeDays} 天</strong></span>`;
+  else $('#trendSummary').innerHTML = `<span><small>平均分</small><strong>${currentMetric.hasData ? formatTrendValue(metric, currentMetric.value) : '暂无'}</strong></span><span><small>模考</small><strong>${totals.scoreCount} 次</strong></span><span><small>有效</small><strong>${activeDays} 天</strong></span>`;
+  const maxValue = metric === 'accuracy' || metric === 'score' ? 100 : Math.max(...buckets.map(bucket => bucket.metric.value), 1), hasAnyData = buckets.some(bucket => bucket.metric.hasData);
+  $('#trendChart').innerHTML = `<div class="trend-bars days-${days} metric-${metric}">${buckets.map((bucket, index) => {
+    const ratio = bucket.metric.hasData ? Math.max(3, bucket.metric.value / maxValue * 100) : 0;
+    const showLabel = days === 7 || index === 0 || index === days - 1 || (index % 7 === 0 && index < days - 2), label = `${bucket.date.getMonth() + 1}/${bucket.date.getDate()}`;
+    const detail = metric === 'accuracy' ? `${formatTrendValue(metric, bucket.metric.value)} · ${bucket.totals.accuracyQuestions} 题` : metric === 'score' ? `${formatTrendValue(metric, bucket.metric.value)} · ${bucket.totals.scoreCount} 次` : formatTrendValue(metric, bucket.metric.value);
+    return `<div class="trend-day${bucket.metric.hasData ? '' : ' no-data'}" title="${escapeAttribute(`${label} · ${bucket.metric.hasData ? detail : '暂无数据'}`)}"><div class="trend-bar-track"><i style="height:${ratio}%"></i></div><small>${showLabel ? label : ''}</small></div>`;
+  }).join('')}</div>${hasAnyData ? '' : `<div class="trend-empty-overlay">最近 ${days} 天暂无${metricName}数据</div>`}`;
 }
 
 function renderModuleBaselines(now) {
@@ -897,6 +934,7 @@ function getHistoryBenchmark(record) {
 
 function renderPersonalAnalytics(now) {
   $$('[data-analytics-days]').forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.analyticsDays) === state.analyticsDays)));
+  $$('[data-trend-metric]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.trendMetric === state.trendMetric)));
   $('#baselinePeriodSummary').textContent = `最近 ${state.analyticsDays} 天 · 速度 / 正确率 / 稳定性`;
   $('#reasonPeriodSummary').textContent = `最近 ${state.analyticsDays} 天 · 仅统计逐题错误标记`;
   renderTrainingTrend(now); renderModuleBaselines(now); renderReasonTrends(now);
@@ -1224,6 +1262,7 @@ $('#statsBtn').addEventListener('click',()=>{renderStats();setStatsView(state.st
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
 $('#historyFilter').addEventListener('change', renderStats);
 $$('[data-analytics-days]').forEach(button => button.addEventListener('click', () => { state.analyticsDays = Number(button.dataset.analyticsDays); renderStats(); }));
+$$('[data-trend-metric]').forEach(button => button.addEventListener('click', () => { state.trendMetric = button.dataset.trendMetric; renderStats(); }));
 $$('[data-stats-view]').forEach(button => button.addEventListener('click', () => setStatsView(button.dataset.statsView)));
 $('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});

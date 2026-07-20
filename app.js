@@ -16,6 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
+const APP_VERSION = 'v2.4.2';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -144,6 +145,22 @@ function getOrderedSectionPresets() {
 function getSectionDurations() {
   const section = state.settings.customDurations?.section || {};
   return Object.fromEntries(PRESETS.section.map(preset => [preset.name, Number.isFinite(section[preset.name]) && section[preset.name] > 0 ? Math.round(section[preset.name]) : preset.seconds]));
+}
+function getSectionOrderSnapshot() {
+  const visibleOrder = typeof getSectionCardOrder === 'function' ? getSectionCardOrder() : [];
+  return normalizeSectionOrder(visibleOrder.length ? visibleOrder : state.settings.sectionOrder);
+}
+function getSectionDurationSnapshot() {
+  const visibleDurations = {};
+  $$('[data-section-time]').forEach(input => {
+    const minutes = Math.max(1, Math.floor(Number(input.value) || 0));
+    if (input.dataset.sectionTime) visibleDurations[input.dataset.sectionTime] = minutes * 60;
+  });
+  const source = Object.keys(visibleDurations).length ? visibleDurations : Object.fromEntries(PRESETS.section.map(preset => [preset.name, preset.seconds]));
+  return Object.fromEntries(PRESETS.section.map(preset => {
+    const seconds = Number(source[preset.name]);
+    return [preset.name, Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : preset.seconds];
+  }));
 }
 function applyCustomDurations() {
   applySectionOrder();
@@ -1232,29 +1249,71 @@ function applySettings() {
   $('#fontSizeOutput').textContent = ['紧凑','标准','特大'][state.settings.fontSize]; $('#warningOutput').textContent = `最后 ${state.settings.warning < 60 ? state.settings.warning + ' 秒' : state.settings.warning / 60 + ' 分钟'}`;
 }
 
+function buildSettingsSnapshot() {
+  const sectionOrder = getSectionOrderSnapshot();
+  const sectionDurations = getSectionDurationSnapshot();
+  return {
+    ...state.settings,
+    sound: state.settings.sound !== false,
+    pacing: state.settings.pacing !== false,
+    dark: Boolean(state.settings.dark),
+    fontSize: Number.isFinite(Number(state.settings.fontSize)) ? Number(state.settings.fontSize) : 1,
+    warning: Number.isFinite(Number(state.settings.warning)) ? Number(state.settings.warning) : 60,
+    sectionOrder,
+    customDurations: { ...(state.settings.customDurations || {}), section: sectionDurations }
+  };
+}
+
 function buildExportData() {
-  const sectionDurations = Object.fromEntries(PRESETS.section.map(preset => [preset.name, preset.seconds]));
-  return { version: 1, exportedAt: new Date().toISOString(), settings: { ...state.settings, customDurations: { ...(state.settings.customDurations || {}), section: sectionDurations } }, records: state.records };
+  const settings = buildSettingsSnapshot(), records = normalizeRecords(state.records);
+  return {
+    version: 2,
+    appVersion: APP_VERSION,
+    exportedAt: new Date().toISOString(),
+    storageKeys: { settings: STORAGE_SETTINGS, records: STORAGE_RECORDS },
+    settings,
+    configuration: {
+      sound: settings.sound,
+      pacing: settings.pacing,
+      dark: settings.dark,
+      fontSize: settings.fontSize,
+      warning: settings.warning,
+      sectionOrder: settings.sectionOrder,
+      sectionDurations: settings.customDurations.section
+    },
+    records,
+    summary: { recordCount: records.length, sectionCount: settings.sectionOrder.length }
+  };
 }
 
 function exportData() {
   const blob = new Blob([JSON.stringify(buildExportData(), null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob), link = document.createElement('a');
   link.href = url; link.download = `gongkao-timer-data-${new Date().toISOString().slice(0,10)}.json`; link.click(); URL.revokeObjectURL(url);
-  showToast('数据已导出');
+  showToast('完整备份已导出');
 }
 
 function normalizeImportedData(data) {
   if (!data || typeof data !== 'object') throw new Error('文件格式不正确');
   const importedSettings = data.settings && typeof data.settings === 'object' ? data.settings : {};
+  const importedConfiguration = data.configuration && typeof data.configuration === 'object' ? data.configuration : {};
   const importedRecords = Array.isArray(data.records) ? data.records : [];
-  const section = importedSettings.customDurations?.section || data.sectionDurations || {};
+  const section = importedSettings.customDurations?.section || importedConfiguration.sectionDurations || data.sectionDurations || {};
   const customDurations = { ...(importedSettings.customDurations || {}), section: {} };
   PRESETS.section.forEach(preset => {
     const seconds = Number(section[preset.name]);
     customDurations.section[preset.name] = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : preset.seconds;
   });
-  return { settings: { ...state.settings, ...importedSettings, customDurations }, records: normalizeRecords(importedRecords) };
+  const mergedSettings = { ...state.settings, ...importedSettings, customDurations };
+  mergedSettings.sound = 'sound' in importedConfiguration ? importedConfiguration.sound !== false : mergedSettings.sound !== false;
+  mergedSettings.pacing = 'pacing' in importedConfiguration ? importedConfiguration.pacing !== false : mergedSettings.pacing !== false;
+  mergedSettings.dark = 'dark' in importedConfiguration ? Boolean(importedConfiguration.dark) : Boolean(mergedSettings.dark);
+  const fontSize = Number(importedSettings.fontSize ?? importedConfiguration.fontSize ?? mergedSettings.fontSize);
+  const warning = Number(importedSettings.warning ?? importedConfiguration.warning ?? mergedSettings.warning);
+  mergedSettings.fontSize = [0, 1, 2].includes(fontSize) ? fontSize : 1;
+  mergedSettings.warning = Number.isFinite(warning) && warning > 0 ? warning : 60;
+  mergedSettings.sectionOrder = normalizeSectionOrder(importedSettings.sectionOrder || importedConfiguration.sectionOrder);
+  return { settings: mergedSettings, records: normalizeRecords(importedRecords) };
 }
 
 async function importDataFile(file) {

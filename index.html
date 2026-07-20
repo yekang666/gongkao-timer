@@ -12,7 +12,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">考</span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.4.2</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.4.3</span></div><small>训练工作台</small></div>
       </div>
       <div class="top-actions">
         <button class="icon-button" id="pipBtn" type="button" title="开启悬浮计时" aria-label="开启悬浮计时">▣</button>
@@ -90,16 +90,27 @@
 
   <aside class="drawer" id="settingsDrawer" aria-hidden="true">
     <div class="drawer-header"><div><span class="eyebrow">个人偏好</span><h2>计时设置</h2></div><button class="icon-button close-drawer" type="button" aria-label="关闭">×</button></div>
+    <nav class="settings-view-tabs" aria-label="设置分类">
+      <button data-settings-view="general" type="button" aria-pressed="true">常用</button>
+      <button data-settings-view="pacing" type="button" aria-pressed="false">模考节奏</button>
+      <button data-settings-view="data" type="button" aria-pressed="false">数据管理</button>
+    </nav>
     <div class="settings-list">
-      <label class="setting-row"><span><strong>结束提示音</strong><small>倒计时结束时播放短促音效</small></span><input id="soundToggle" type="checkbox" checked></label>
-      <label class="setting-row"><span><strong>模考节奏提醒</strong><small>根据专项时间配置和逐题打点判断是否落后</small></span><input id="pacingToggle" type="checkbox" checked></label>
-      <label class="setting-row"><span><strong>深色专注模式</strong><small>降低环境光干扰</small></span><input id="themeToggle" type="checkbox"></label>
-      <label class="setting-block"><span><strong>计时数字大小</strong><output id="fontSizeOutput">标准</output></span><input id="fontSizeRange" type="range" min="0" max="2" step="1" value="1"></label>
-      <label class="setting-block"><span><strong>倒计时预警</strong><output id="warningOutput">最后 1 分钟</output></span><input id="warningRange" type="range" min="10" max="300" step="10" value="60"></label>
-      <div class="setting-block section-time-settings"><span><strong>专项时间与模考节奏</strong><small>时间按比例映射到行测模考；长按卡片后拖动可调整答题顺序</small></span><div class="section-time-grid" id="sectionTimeGrid" aria-label="专项时间和模考顺序"></div><p class="pacing-order-note" id="pacingOrderNote" aria-live="polite"></p><button class="primary" id="saveSectionTimesBtn" type="button">保存专项时间</button></div>
-      <div class="setting-block data-tools"><span><strong>数据管理</strong><small>导出或导入全部设置、专项时间、答题顺序和复盘记录</small></span><div class="data-actions"><button class="secondary" id="exportDataBtn" type="button">导出完整备份</button><button class="primary" id="importDataBtn" type="button">导入数据</button><input class="hidden" id="importDataInput" type="file" accept="application/json,.json"></div></div>
+      <section class="settings-panel" data-settings-panel="general">
+        <label class="setting-row"><span><strong>结束提示音</strong><small>倒计时结束时播放短促音效</small></span><input id="soundToggle" type="checkbox" checked></label>
+        <label class="setting-row"><span><strong>深色专注模式</strong><small>降低环境光干扰</small></span><input id="themeToggle" type="checkbox"></label>
+        <label class="setting-block"><span><strong>计时数字大小</strong><output id="fontSizeOutput">标准</output></span><input id="fontSizeRange" type="range" min="0" max="2" step="1" value="1"></label>
+        <label class="setting-block"><span><strong>倒计时预警</strong><output id="warningOutput">最后 1 分钟</output></span><input id="warningRange" type="range" min="10" max="300" step="10" value="60"></label>
+      </section>
+      <section class="settings-panel hidden" data-settings-panel="pacing">
+        <label class="setting-row"><span><strong>模考节奏提醒</strong><small>根据专项时间配置和逐题打点判断是否落后</small></span><input id="pacingToggle" type="checkbox" checked></label>
+        <div class="setting-block section-time-settings"><span><strong>专项时间与模考节奏</strong><small>时间按比例映射到行测模考；长按卡片后拖动可调整答题顺序</small></span><div class="section-time-grid" id="sectionTimeGrid" aria-label="专项时间和模考顺序"></div><p class="pacing-order-note" id="pacingOrderNote" aria-live="polite"></p><button class="primary" id="saveSectionTimesBtn" type="button">保存专项时间</button></div>
+      </section>
+      <section class="settings-panel hidden" data-settings-panel="data">
+        <div class="setting-block data-tools"><span><strong>完整备份</strong><small>导出或导入全部设置、专项时间、答题顺序和复盘记录</small></span><div class="data-actions"><button class="secondary" id="exportDataBtn" type="button">导出完整备份</button><button class="primary" id="importDataBtn" type="button">导入数据</button><input class="hidden" id="importDataInput" type="file" accept="application/json,.json"></div></div>
+        <div class="privacy-note"><strong>数据仅保存在当前设备</strong><p>训练记录、专项时间配置和个人设置使用浏览器本地存储，不会上传。</p></div>
+      </section>
     </div>
-    <div class="privacy-note"><strong>数据仅保存在当前设备</strong><p>训练记录、专项时间配置和个人设置使用浏览器本地存储，不会上传。</p></div>
   </aside>
 
   <dialog id="finishDialog">

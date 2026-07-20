@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.4.2';
+const APP_VERSION = 'v2.4.3';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -33,7 +33,7 @@ const state = {
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
   laps: [], lastLapElapsed: 0, pacingNotified: [],
-  pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', trendVisual: 'bar', statsView: 'overview', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
+  pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', trendVisual: 'bar', statsView: 'overview', settingsView: 'general', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
   settings: { sound: true, pacing: true, dark: false, fontSize: 1, warning: 60, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
@@ -1196,6 +1196,14 @@ function setStatsView(view, shouldScroll = true) {
   if (shouldScroll && $('#statsDrawer').classList.contains('open')) $('#statsDrawer').scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+function setSettingsView(view, shouldScroll = true) {
+  const views = ['general', 'pacing', 'data'];
+  state.settingsView = views.includes(view) ? view : 'general';
+  $$('[data-settings-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.settingsView === state.settingsView)));
+  $$('[data-settings-panel]').forEach(panel => panel.classList.toggle('hidden', panel.dataset.settingsPanel !== state.settingsView));
+  if (shouldScroll && $('#settingsDrawer').classList.contains('open')) $('#settingsDrawer').scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 function recordMatchesHistoryFilter(record, filter) {
   if (!filter) return true;
   const separator = filter.indexOf(':'), type = filter.slice(0, separator), value = filter.slice(separator + 1);
@@ -1556,13 +1564,14 @@ $('#trainingMetaDialog').addEventListener('cancel', event => { event.preventDefa
 $('#lapDetailList').addEventListener('click', updateLapReviewFromClick); $('#lapDetailList').addEventListener('input', updateLapReviewNote);
 $('#saveLapReviewBtn').addEventListener('click', saveLapReviews); $('#closeLapDetailBtn').addEventListener('click', closeLapDetail);
 $('#lapDetailDialog').addEventListener('cancel', event => { event.preventDefault(); closeLapDetail(); });
-$('#statsBtn').addEventListener('click',()=>{renderStats();setStatsView(state.statsView,false);openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>openDrawer($('#settingsDrawer')));$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
+$('#statsBtn').addEventListener('click',()=>{renderStats();setStatsView(state.statsView,false);openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>{setSettingsView(state.settingsView,false);openDrawer($('#settingsDrawer'))});$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
 $('#historyFilter').addEventListener('change', renderStats);
 $$('[data-analytics-days]').forEach(button => button.addEventListener('click', () => { state.analyticsDays = Number(button.dataset.analyticsDays); renderStats(); }));
 $$('[data-trend-metric]').forEach(button => button.addEventListener('click', () => { state.trendMetric = button.dataset.trendMetric; renderStats(); }));
 $$('[data-trend-visual]').forEach(button => button.addEventListener('click', () => { state.trendVisual = button.dataset.trendVisual; renderStats(); }));
 $$('[data-stats-view]').forEach(button => button.addEventListener('click', () => setStatsView(button.dataset.statsView)));
+$$('[data-settings-view]').forEach(button => button.addEventListener('click', () => setSettingsView(button.dataset.settingsView)));
 $('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#saveSectionTimesBtn').addEventListener('click', saveSectionTimes);

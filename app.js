@@ -23,6 +23,7 @@ const TRAINING_DIFFICULTIES = ['简单', '正常', '较难'];
 const SPEED_SCORE_TYPES = new Set(PRESETS.mock.map(preset => preset.name));
 const LAP_REVIEW_STATUSES = ['correct', 'wrong', 'skipped'];
 const LAP_ERROR_REASONS = ['知识盲区', '理解偏差', '计算失误', '方法不优', '时间不足'];
+const DEFAULT_SECTION_ORDER = PRESETS.section.map(preset => preset.name);
 
 const state = {
   mode: 'mock', preset: PRESETS.mock[0], duration: PRESETS.mock[0].seconds,
@@ -105,26 +106,94 @@ function normalizeRecords(records) {
 
 function saveSettings() { localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(state.settings)); }
 function saveRecords() { localStorage.setItem(STORAGE_RECORDS, JSON.stringify(state.records)); }
+function normalizeSectionOrder(order) {
+  const requested = Array.isArray(order) ? order.filter((name, index) => DEFAULT_SECTION_ORDER.includes(name) && order.indexOf(name) === index) : [];
+  return [...requested, ...DEFAULT_SECTION_ORDER.filter(name => !requested.includes(name))];
+}
+function applySectionOrder(order = state.settings.sectionOrder) {
+  state.settings.sectionOrder = normalizeSectionOrder(order);
+}
+function getOrderedSectionPresets() {
+  const presetsByName = new Map(PRESETS.section.map(preset => [preset.name, preset]));
+  return normalizeSectionOrder(state.settings.sectionOrder).map(name => presetsByName.get(name)).filter(Boolean);
+}
 function getSectionDurations() {
   const section = state.settings.customDurations?.section || {};
   return Object.fromEntries(PRESETS.section.map(preset => [preset.name, Number.isFinite(section[preset.name]) && section[preset.name] > 0 ? Math.round(section[preset.name]) : preset.seconds]));
 }
 function applyCustomDurations() {
+  applySectionOrder();
   const sectionDurations = getSectionDurations();
   state.settings.customDurations = { ...(state.settings.customDurations || {}), section: sectionDurations };
   PRESETS.section.forEach(preset => { preset.seconds = sectionDurations[preset.name]; });
 }
 function renderSectionTimeSettings() {
   const grid = $('#sectionTimeGrid'); if (!grid) return;
-  grid.innerHTML = PRESETS.section.map(preset => `<label class="section-time-row"><span>${preset.name}</span><input data-section-time="${preset.name}" type="number" min="1" max="300" step="1" value="${Math.round(preset.seconds / 60)}"><em>分钟</em></label>`).join('');
+  grid.innerHTML = getOrderedSectionPresets().map(preset => `<div class="section-time-row" data-section-card data-section-name="${preset.name}" title="长按后拖动可调整模考顺序"><span class="section-drag-handle" aria-hidden="true">⠿</span><label><span>${preset.name}</span><input data-section-time="${preset.name}" type="number" min="1" max="300" step="1" value="${Math.round(preset.seconds / 60)}"><em>分钟</em></label></div>`).join('');
+  renderPacingOrderNote();
+}
+function renderPacingOrderNote(message = '') {
+  const note = $('#pacingOrderNote'); if (!note) return;
+  note.textContent = message || `模考顺序：${getOrderedSectionPresets().map(preset => preset.name).join(' → ')}`;
 }
 function saveSectionTimes() {
   const section = {};
   $$('[data-section-time]').forEach(input => { const minutes = Math.max(1, Math.floor(Number(input.value) || 0)); section[input.dataset.sectionTime] = minutes * 60; input.value = minutes; });
   state.settings.customDurations = { ...(state.settings.customDurations || {}), section };
-  applyCustomDurations(); saveSettings();
+  applyCustomDurations(); state.pacingNotified = []; saveSettings();
   if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; resetTimer(false); }
   renderSectionTimeSettings(); renderPresets(); render(); showToast('专项时间已保存');
+}
+
+const sectionSort = { card: null, timer: null, active: false, inputType: null, pointerId: null, touchId: null, startX: 0, startY: 0, originalOrder: [] };
+
+function getSectionCardOrder() { return $$('#sectionTimeGrid [data-section-card]').map(card => card.dataset.sectionName); }
+function reorderSectionCards(order) {
+  const grid = $('#sectionTimeGrid'), cards = new Map($$('#sectionTimeGrid [data-section-card]').map(card => [card.dataset.sectionName, card]));
+  order.forEach(name => { if (cards.has(name)) grid.appendChild(cards.get(name)); });
+}
+function resetSectionSortState() {
+  clearTimeout(sectionSort.timer);
+  sectionSort.card?.classList.remove('holding', 'dragging'); $('#sectionTimeGrid').classList.remove('sorting');
+  document.body.classList.remove('section-reordering');
+  Object.assign(sectionSort, { card: null, timer: null, active: false, inputType: null, pointerId: null, touchId: null, startX: 0, startY: 0, originalOrder: [] });
+}
+function activateSectionSort() {
+  if (!sectionSort.card) return;
+  sectionSort.active = true; sectionSort.originalOrder = getSectionCardOrder();
+  sectionSort.card.classList.remove('holding'); sectionSort.card.classList.add('dragging');
+  $('#sectionTimeGrid').classList.add('sorting'); document.body.classList.add('section-reordering');
+  if (sectionSort.inputType === 'pointer' && sectionSort.pointerId !== null) { try { sectionSort.card.setPointerCapture(sectionSort.pointerId); } catch {} }
+  if (navigator.vibrate) navigator.vibrate(30);
+  renderPacingOrderNote('正在调整：拖到目标位置后松开');
+}
+function beginSectionSort(card, x, y, inputType, id) {
+  resetSectionSortState();
+  Object.assign(sectionSort, { card, inputType, startX: x, startY: y, pointerId: inputType === 'pointer' ? id : null, touchId: inputType === 'touch' ? id : null });
+  if (inputType === 'pointer') { try { card.setPointerCapture(id); } catch {} }
+  card.classList.add('holding'); sectionSort.timer = setTimeout(activateSectionSort, 460);
+}
+function moveSectionSort(x, y, event) {
+  if (!sectionSort.card) return;
+  if (!sectionSort.active) {
+    if (Math.hypot(x - sectionSort.startX, y - sectionSort.startY) > 10) resetSectionSortState();
+    return;
+  }
+  if (event.cancelable) event.preventDefault();
+  const target = document.elementFromPoint(x, y)?.closest('[data-section-card]');
+  if (!target || target === sectionSort.card || !$('#sectionTimeGrid').contains(target)) return;
+  const cards = $$('#sectionTimeGrid [data-section-card]'), from = cards.indexOf(sectionSort.card), to = cards.indexOf(target);
+  $('#sectionTimeGrid').insertBefore(sectionSort.card, to > from ? target.nextSibling : target);
+}
+function finishSectionSort(cancelled = false) {
+  if (!sectionSort.card) return;
+  const wasActive = sectionSort.active, originalOrder = [...sectionSort.originalOrder];
+  if (wasActive && cancelled) reorderSectionCards(originalOrder);
+  const order = wasActive && !cancelled ? getSectionCardOrder() : null;
+  resetSectionSortState();
+  if (!order) { renderPacingOrderNote(); return; }
+  state.settings.sectionOrder = normalizeSectionOrder(order); applySectionOrder(); state.pacingNotified = []; saveSettings();
+  renderPresets(); render(); renderPacingOrderNote(); showToast('模考节奏顺序已保存');
 }
 function formatClock(total) {
   total = Math.max(0, Math.round(total));
@@ -258,12 +327,12 @@ function isMockPacingActive() {
 }
 
 function getMockPacingPlan() {
-  const configuredTotal = PRESETS.section.reduce((sum, preset) => sum + preset.seconds, 0);
+  const pacingPresets = getOrderedSectionPresets(), configuredTotal = pacingPresets.reduce((sum, preset) => sum + preset.seconds, 0);
   if (!configuredTotal || state.duration <= 0) return [];
   let configuredElapsed = 0, questionTotal = 0;
-  return PRESETS.section.map((preset, index) => {
+  return pacingPresets.map((preset, index) => {
     configuredElapsed += preset.seconds; questionTotal += MOCK_PACING_QUESTION_COUNTS[preset.name] || 0;
-    return { index, module: preset.name, at: state.duration * configuredElapsed / configuredTotal, questions: questionTotal, nextModule: PRESETS.section[index + 1]?.name || null };
+    return { index, module: preset.name, at: state.duration * configuredElapsed / configuredTotal, questions: questionTotal, nextModule: pacingPresets[index + 1]?.name || null };
   }).slice(0, -1);
 }
 
@@ -746,7 +815,7 @@ async function importDataFile(file) {
   try {
     const data = normalizeImportedData(JSON.parse(await file.text()));
     state.settings = data.settings; state.records = data.records;
-    saveSettings(); saveRecords(); applyCustomDurations();
+    applyCustomDurations(); saveSettings(); saveRecords();
     if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; resetTimer(false); }
     applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); render(); showToast('数据已导入');
   } catch (error) { showToast(`导入失败：${error.message}`); }
@@ -982,6 +1051,25 @@ $('#historyFilter').addEventListener('change', renderStats);
 $('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#saveSectionTimesBtn').addEventListener('click', saveSectionTimes);
+$('#sectionTimeGrid').addEventListener('pointerdown', event => {
+  if (event.pointerType === 'touch' || event.button !== 0 || event.target.closest('input,button,a')) return;
+  const card = event.target.closest('[data-section-card]'); if (card) beginSectionSort(card, event.clientX, event.clientY, 'pointer', event.pointerId);
+});
+$('#sectionTimeGrid').addEventListener('pointermove', event => { if (sectionSort.inputType === 'pointer' && event.pointerId === sectionSort.pointerId) moveSectionSort(event.clientX, event.clientY, event); });
+$('#sectionTimeGrid').addEventListener('pointerup', event => { if (sectionSort.inputType === 'pointer' && event.pointerId === sectionSort.pointerId) finishSectionSort(false); });
+$('#sectionTimeGrid').addEventListener('pointercancel', event => { if (sectionSort.inputType === 'pointer' && event.pointerId === sectionSort.pointerId) finishSectionSort(true); });
+$('#sectionTimeGrid').addEventListener('touchstart', event => {
+  if (event.touches.length !== 1 || event.target.closest('input,button,a')) return;
+  const card = event.target.closest('[data-section-card]'), touch = event.touches[0]; if (card) beginSectionSort(card, touch.clientX, touch.clientY, 'touch', touch.identifier);
+}, { passive: true });
+$('#sectionTimeGrid').addEventListener('touchmove', event => {
+  if (sectionSort.inputType !== 'touch') return;
+  const touch = [...event.touches].find(item => item.identifier === sectionSort.touchId); if (touch) moveSectionSort(touch.clientX, touch.clientY, event);
+}, { passive: false });
+$('#sectionTimeGrid').addEventListener('touchend', event => { if (sectionSort.inputType === 'touch' && [...event.changedTouches].some(item => item.identifier === sectionSort.touchId)) finishSectionSort(false); });
+$('#sectionTimeGrid').addEventListener('touchcancel', event => { if (sectionSort.inputType === 'touch' && [...event.changedTouches].some(item => item.identifier === sectionSort.touchId)) finishSectionSort(true); });
+$('#sectionTimeGrid').addEventListener('contextmenu', event => { if (sectionSort.card || event.target.closest('[data-section-card]')) event.preventDefault(); });
+$('#sectionTimeGrid').addEventListener('dragstart', event => event.preventDefault());
 $('#exportDataBtn').addEventListener('click', exportData); $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click()); $('#importDataInput').addEventListener('change', e => { importDataFile(e.target.files[0]); e.target.value = ''; });
 $('#pipBtn').addEventListener('click',togglePip);
 window.addEventListener('beforeunload', () => { stopInterval(); stopMobilePipSyncLoop(); }); applyCustomDurations(); applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); render();

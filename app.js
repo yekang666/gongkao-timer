@@ -30,7 +30,7 @@ const state = {
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
   laps: [], lastLapElapsed: 0, pacingNotified: [],
-  pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, lapReviewDraft: [], analyticsDays: 7, records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
+  pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, lapReviewDraft: [], analyticsDays: 7, statsView: 'overview', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
   settings: { sound: true, pacing: true, dark: false, fontSize: 1, warning: 60, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
@@ -902,6 +902,14 @@ function renderPersonalAnalytics(now) {
   renderTrainingTrend(now); renderModuleBaselines(now); renderReasonTrends(now);
 }
 
+function setStatsView(view, shouldScroll = true) {
+  const views = ['overview', 'trend', 'baseline', 'reasons', 'history'];
+  state.statsView = views.includes(view) ? view : 'overview';
+  $$('[data-stats-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.statsView === state.statsView)));
+  $$('[data-stats-panel]').forEach(panel => panel.classList.toggle('hidden', panel.dataset.statsPanel !== state.statsView));
+  if (shouldScroll && $('#statsDrawer').classList.contains('open')) $('#statsDrawer').scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 function recordMatchesHistoryFilter(record, filter) {
   if (!filter) return true;
   const separator = filter.indexOf(':'), type = filter.slice(0, separator), value = filter.slice(separator + 1);
@@ -915,6 +923,7 @@ function renderStats() {
   const week = state.records.filter(r => new Date(r.endedAt) >= weekStart);
   const weekAccuracy = getAccuracyTotals(week);
   const weekScore = getScoreAverage(week.filter(r => SPEED_SCORE_TYPES.has(r.module)));
+  $('#historyTabCount').textContent = state.records.length > 99 ? '99+' : String(state.records.length);
   $('#todayDuration').textContent = formatDuration(today.reduce((n,r)=>n+r.duration,0)); $('#weekCount').textContent = `${week.length} 次`; $('#weekDuration').textContent = formatDuration(week.reduce((n,r)=>n+r.duration,0)); $('#weekAccuracy').textContent = formatAccuracy(weekAccuracy.correct, weekAccuracy.questions); $('#weekScore').textContent = formatScore(weekScore);
   renderPersonalAnalytics(now);
   const modules = TRACKING_CATEGORIES; $('#moduleStats').innerHTML = modules.map(name => {
@@ -1211,10 +1220,11 @@ $('#trainingMetaDialog').addEventListener('cancel', event => { event.preventDefa
 $('#lapDetailList').addEventListener('click', updateLapReviewFromClick); $('#lapDetailList').addEventListener('input', updateLapReviewNote);
 $('#saveLapReviewBtn').addEventListener('click', saveLapReviews); $('#closeLapDetailBtn').addEventListener('click', closeLapDetail);
 $('#lapDetailDialog').addEventListener('cancel', event => { event.preventDefault(); closeLapDetail(); });
-$('#statsBtn').addEventListener('click',()=>{renderStats();openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>openDrawer($('#settingsDrawer')));$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
+$('#statsBtn').addEventListener('click',()=>{renderStats();setStatsView(state.statsView,false);openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>openDrawer($('#settingsDrawer')));$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
 $('#historyFilter').addEventListener('change', renderStats);
 $$('[data-analytics-days]').forEach(button => button.addEventListener('click', () => { state.analyticsDays = Number(button.dataset.analyticsDays); renderStats(); }));
+$$('[data-stats-view]').forEach(button => button.addEventListener('click', () => setStatsView(button.dataset.statsView)));
 $('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#saveSectionTimesBtn').addEventListener('click', saveSectionTimes);

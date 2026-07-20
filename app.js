@@ -145,51 +145,85 @@ function saveSectionTimes() {
   renderSectionTimeSettings(); renderPresets(); render(); showToast('专项时间已保存');
 }
 
-const sectionSort = { card: null, timer: null, active: false, inputType: null, pointerId: null, touchId: null, startX: 0, startY: 0, originalOrder: [] };
+const sectionSort = { card: null, placeholder: null, timer: null, frame: null, active: false, inputType: null, pointerId: null, touchId: null, startX: 0, startY: 0, lastX: 0, lastY: 0, offsetX: 0, offsetY: 0, originalOrder: [] };
 
-function getSectionCardOrder() { return $$('#sectionTimeGrid [data-section-card]').map(card => card.dataset.sectionName); }
+function getSectionCardOrder() { return $$('#sectionTimeGrid [data-section-name]').map(card => card.dataset.sectionName); }
 function reorderSectionCards(order) {
   const grid = $('#sectionTimeGrid'), cards = new Map($$('#sectionTimeGrid [data-section-card]').map(card => [card.dataset.sectionName, card]));
   order.forEach(name => { if (cards.has(name)) grid.appendChild(cards.get(name)); });
 }
+function clearSectionFloatingStyles(card) {
+  if (!card) return;
+  ['position', 'left', 'top', 'width', 'height', 'margin', 'transform'].forEach(property => card.style.removeProperty(property));
+}
 function resetSectionSortState() {
-  clearTimeout(sectionSort.timer);
-  sectionSort.card?.classList.remove('holding', 'dragging'); $('#sectionTimeGrid').classList.remove('sorting');
+  clearTimeout(sectionSort.timer); if (sectionSort.frame) cancelAnimationFrame(sectionSort.frame);
+  if (sectionSort.placeholder?.isConnected && sectionSort.card) { sectionSort.placeholder.parentNode.insertBefore(sectionSort.card, sectionSort.placeholder); sectionSort.placeholder.remove(); }
+  sectionSort.card?.classList.remove('holding', 'dragging'); clearSectionFloatingStyles(sectionSort.card); $('#sectionTimeGrid').classList.remove('sorting');
   document.body.classList.remove('section-reordering');
-  Object.assign(sectionSort, { card: null, timer: null, active: false, inputType: null, pointerId: null, touchId: null, startX: 0, startY: 0, originalOrder: [] });
+  Object.assign(sectionSort, { card: null, placeholder: null, timer: null, frame: null, active: false, inputType: null, pointerId: null, touchId: null, startX: 0, startY: 0, lastX: 0, lastY: 0, offsetX: 0, offsetY: 0, originalOrder: [] });
+}
+function positionFloatingSectionCard(x, y) {
+  sectionSort.lastX = x; sectionSort.lastY = y;
+  if (sectionSort.frame) return;
+  sectionSort.frame = requestAnimationFrame(() => {
+    sectionSort.frame = null; if (!sectionSort.active || !sectionSort.card) return;
+    const left = sectionSort.lastX - sectionSort.offsetX, top = sectionSort.lastY - sectionSort.offsetY;
+    sectionSort.card.style.transform = `translate3d(${left}px,${top}px,0) scale(1.025)`;
+  });
+}
+function animateSectionGridReflow(change) {
+  const cards = $$('#sectionTimeGrid [data-section-card]'), before = new Map(cards.map(card => [card, card.getBoundingClientRect()]));
+  change();
+  cards.forEach(card => {
+    const previous = before.get(card), current = card.getBoundingClientRect(), x = previous.left - current.left, y = previous.top - current.top;
+    if (Math.abs(x) < 1 && Math.abs(y) < 1) return;
+    card.animate([{ transform: `translate3d(${x}px,${y}px,0)` }, { transform: 'translate3d(0,0,0)' }], { duration: 180, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  });
 }
 function activateSectionSort() {
   if (!sectionSort.card) return;
-  sectionSort.active = true; sectionSort.originalOrder = getSectionCardOrder();
+  const card = sectionSort.card, grid = $('#sectionTimeGrid'), rect = card.getBoundingClientRect();
+  sectionSort.active = true; sectionSort.originalOrder = getSectionCardOrder(); sectionSort.offsetX = sectionSort.lastX - rect.left; sectionSort.offsetY = sectionSort.lastY - rect.top;
+  const placeholder = document.createElement('div'); placeholder.className = 'section-sort-placeholder'; placeholder.dataset.sectionName = card.dataset.sectionName; placeholder.style.height = `${rect.height}px`; sectionSort.placeholder = placeholder;
+  grid.insertBefore(placeholder, card); document.body.appendChild(card);
+  Object.assign(card.style, { position: 'fixed', left: '0px', top: '0px', width: `${rect.width}px`, height: `${rect.height}px`, margin: '0px', transform: `translate3d(${rect.left}px,${rect.top}px,0) scale(1.025)` });
   sectionSort.card.classList.remove('holding'); sectionSort.card.classList.add('dragging');
-  $('#sectionTimeGrid').classList.add('sorting'); document.body.classList.add('section-reordering');
+  grid.classList.add('sorting'); document.body.classList.add('section-reordering');
   if (sectionSort.inputType === 'pointer' && sectionSort.pointerId !== null) { try { sectionSort.card.setPointerCapture(sectionSort.pointerId); } catch {} }
   if (navigator.vibrate) navigator.vibrate(30);
   renderPacingOrderNote('正在调整：拖到目标位置后松开');
 }
 function beginSectionSort(card, x, y, inputType, id) {
   resetSectionSortState();
-  Object.assign(sectionSort, { card, inputType, startX: x, startY: y, pointerId: inputType === 'pointer' ? id : null, touchId: inputType === 'touch' ? id : null });
+  Object.assign(sectionSort, { card, inputType, startX: x, startY: y, lastX: x, lastY: y, pointerId: inputType === 'pointer' ? id : null, touchId: inputType === 'touch' ? id : null });
   if (inputType === 'pointer') { try { card.setPointerCapture(id); } catch {} }
   card.classList.add('holding'); sectionSort.timer = setTimeout(activateSectionSort, 460);
 }
 function moveSectionSort(x, y, event) {
   if (!sectionSort.card) return;
   if (!sectionSort.active) {
+    sectionSort.lastX = x; sectionSort.lastY = y;
     if (Math.hypot(x - sectionSort.startX, y - sectionSort.startY) > 10) resetSectionSortState();
     return;
   }
-  if (event.cancelable) event.preventDefault();
+  if (event.cancelable) event.preventDefault(); positionFloatingSectionCard(x, y);
   const target = document.elementFromPoint(x, y)?.closest('[data-section-card]');
-  if (!target || target === sectionSort.card || !$('#sectionTimeGrid').contains(target)) return;
-  const cards = $$('#sectionTimeGrid [data-section-card]'), from = cards.indexOf(sectionSort.card), to = cards.indexOf(target);
-  $('#sectionTimeGrid').insertBefore(sectionSort.card, to > from ? target.nextSibling : target);
+  if (!target || !$('#sectionTimeGrid').contains(target)) return;
+  const grid = $('#sectionTimeGrid'), children = [...grid.children], from = children.indexOf(sectionSort.placeholder), to = children.indexOf(target);
+  if (from < 0 || to < 0 || Math.abs(from - to) < 1) return;
+  animateSectionGridReflow(() => grid.insertBefore(sectionSort.placeholder, to > from ? target.nextSibling : target));
 }
 function finishSectionSort(cancelled = false) {
   if (!sectionSort.card) return;
   const wasActive = sectionSort.active, originalOrder = [...sectionSort.originalOrder];
-  if (wasActive && cancelled) reorderSectionCards(originalOrder);
-  const order = wasActive && !cancelled ? getSectionCardOrder() : null;
+  if (!wasActive) { resetSectionSortState(); renderPacingOrderNote(); return; }
+  const card = sectionSort.card, placeholder = sectionSort.placeholder, floatingRect = card.getBoundingClientRect();
+  placeholder.parentNode.insertBefore(card, placeholder); placeholder.remove(); sectionSort.placeholder = null; clearSectionFloatingStyles(card); card.classList.remove('dragging');
+  if (cancelled) reorderSectionCards(originalOrder);
+  const settledRect = card.getBoundingClientRect(), x = floatingRect.left - settledRect.left, y = floatingRect.top - settledRect.top;
+  card.animate([{ transform: `translate3d(${x}px,${y}px,0) scale(1.025)`, opacity: .94 }, { transform: 'translate3d(0,0,0) scale(1)', opacity: 1 }], { duration: 200, easing: 'cubic-bezier(.2,.85,.2,1)' });
+  const order = cancelled ? null : getSectionCardOrder();
   resetSectionSortState();
   if (!order) { renderPacingOrderNote(); return; }
   state.settings.sectionOrder = normalizeSectionOrder(order); applySectionOrder(); state.pacingNotified = []; saveSettings();
@@ -1055,20 +1089,20 @@ $('#sectionTimeGrid').addEventListener('pointerdown', event => {
   if (event.pointerType === 'touch' || event.button !== 0 || event.target.closest('input,button,a')) return;
   const card = event.target.closest('[data-section-card]'); if (card) beginSectionSort(card, event.clientX, event.clientY, 'pointer', event.pointerId);
 });
-$('#sectionTimeGrid').addEventListener('pointermove', event => { if (sectionSort.inputType === 'pointer' && event.pointerId === sectionSort.pointerId) moveSectionSort(event.clientX, event.clientY, event); });
-$('#sectionTimeGrid').addEventListener('pointerup', event => { if (sectionSort.inputType === 'pointer' && event.pointerId === sectionSort.pointerId) finishSectionSort(false); });
-$('#sectionTimeGrid').addEventListener('pointercancel', event => { if (sectionSort.inputType === 'pointer' && event.pointerId === sectionSort.pointerId) finishSectionSort(true); });
+document.addEventListener('pointermove', event => { if (sectionSort.inputType === 'pointer' && event.pointerId === sectionSort.pointerId) moveSectionSort(event.clientX, event.clientY, event); });
+document.addEventListener('pointerup', event => { if (sectionSort.inputType === 'pointer' && event.pointerId === sectionSort.pointerId) finishSectionSort(false); });
+document.addEventListener('pointercancel', event => { if (sectionSort.inputType === 'pointer' && event.pointerId === sectionSort.pointerId) finishSectionSort(true); });
 $('#sectionTimeGrid').addEventListener('touchstart', event => {
   if (event.touches.length !== 1 || event.target.closest('input,button,a')) return;
   const card = event.target.closest('[data-section-card]'), touch = event.touches[0]; if (card) beginSectionSort(card, touch.clientX, touch.clientY, 'touch', touch.identifier);
 }, { passive: true });
-$('#sectionTimeGrid').addEventListener('touchmove', event => {
+document.addEventListener('touchmove', event => {
   if (sectionSort.inputType !== 'touch') return;
   const touch = [...event.touches].find(item => item.identifier === sectionSort.touchId); if (touch) moveSectionSort(touch.clientX, touch.clientY, event);
 }, { passive: false });
-$('#sectionTimeGrid').addEventListener('touchend', event => { if (sectionSort.inputType === 'touch' && [...event.changedTouches].some(item => item.identifier === sectionSort.touchId)) finishSectionSort(false); });
-$('#sectionTimeGrid').addEventListener('touchcancel', event => { if (sectionSort.inputType === 'touch' && [...event.changedTouches].some(item => item.identifier === sectionSort.touchId)) finishSectionSort(true); });
-$('#sectionTimeGrid').addEventListener('contextmenu', event => { if (sectionSort.card || event.target.closest('[data-section-card]')) event.preventDefault(); });
+document.addEventListener('touchend', event => { if (sectionSort.inputType === 'touch' && [...event.changedTouches].some(item => item.identifier === sectionSort.touchId)) finishSectionSort(false); });
+document.addEventListener('touchcancel', event => { if (sectionSort.inputType === 'touch' && [...event.changedTouches].some(item => item.identifier === sectionSort.touchId)) finishSectionSort(true); });
+document.addEventListener('contextmenu', event => { if (sectionSort.card || event.target.closest('[data-section-card]')) event.preventDefault(); });
 $('#sectionTimeGrid').addEventListener('dragstart', event => event.preventDefault());
 $('#exportDataBtn').addEventListener('click', exportData); $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click()); $('#importDataInput').addEventListener('change', e => { importDataFile(e.target.files[0]); e.target.value = ''; });
 $('#pipBtn').addEventListener('click',togglePip);

@@ -723,3 +723,27 @@ body.dark .preset-button.active {
   background: var(--accent);
   color: #fff;
 }
+
+#statsDrawer .stats-view-tabs button:not([aria-pressed="true"]) {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+#statsDrawer .stats-view-tabs button[aria-pressed="true"],
+#statsDrawer .stats-view-tabs button[aria-pressed="true"]:hover,
+#statsDrawer .stats-view-tabs button[aria-pressed="true"]:focus,
+#statsDrawer .stats-view-tabs button[aria-pressed="true"]:focus-visible,
+#statsDrawer .stats-view-tabs button[aria-pressed="true"]:active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff !important;
+  transition: none;
+}
+
+body.dark #statsDrawer .stats-view-tabs button[aria-pressed="true"],
+body.dark #statsDrawer .stats-view-tabs button[aria-pressed="true"]:hover,
+body.dark #statsDrawer .stats-view-tabs button[aria-pressed="true"]:focus,
+body.dark #statsDrawer .stats-view-tabs button[aria-pressed="true"]:focus-visible,
+body.dark #statsDrawer .stats-view-tabs button[aria-pressed="true"]:active {
+  color: #0b1a12 !important;
+}

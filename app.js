@@ -24,13 +24,14 @@ const SPEED_SCORE_TYPES = new Set(PRESETS.mock.map(preset => preset.name));
 const LAP_REVIEW_STATUSES = ['correct', 'wrong', 'skipped'];
 const LAP_ERROR_REASONS = ['知识盲区', '理解偏差', '计算失误', '方法不优', '时间不足'];
 const DEFAULT_SECTION_ORDER = PRESETS.section.map(preset => preset.name);
+const ANALYTICS_COLORS = ['#2e6754', '#c46a20', '#54799a', '#8a6c9b', '#b83b35', '#638467', '#a46d4c', '#467b86', '#7b7791'];
 
 const state = {
   mode: 'mock', preset: PRESETS.mock[0], duration: PRESETS.mock[0].seconds,
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
   laps: [], lastLapElapsed: 0, pacingNotified: [],
-  pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', statsView: 'overview', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
+  pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', trendVisual: 'bar', statsView: 'overview', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
   settings: { sound: true, pacing: true, dark: false, fontSize: 1, warning: 60, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
@@ -852,36 +853,100 @@ function formatTrendValue(metric, value) {
   return formatScore(value);
 }
 
-function renderTrainingTrend(now) {
-  const days = state.analyticsDays, metric = state.trendMetric, current = getPeriodRecords(days, 0, now), previous = getPeriodRecords(days, 1, now);
-  const buckets = Array.from({ length: days }, (_, index) => {
-    const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - days + index + 1);
-    return { date, key: getDayKey(date), records: [] };
-  }), byKey = new Map(buckets.map(bucket => [bucket.key, bucket]));
-  current.forEach(record => { const bucket = byKey.get(getDayKey(new Date(record.endedAt))); if (bucket) bucket.records.push(record); });
-  buckets.forEach(bucket => { bucket.totals = createTrendTotals(bucket.records); bucket.metric = getTrendValue(bucket.totals, metric); });
-  const totals = createTrendTotals(current), previousTotals = createTrendTotals(previous), currentMetric = getTrendValue(totals, metric), previousMetric = getTrendValue(previousTotals, metric);
-  const activeDays = buckets.filter(bucket => bucket.metric.hasData).length, metricNames = { duration: '训练时长', questions: '刷题数量', accuracy: '正确率', score: '模考成绩' }, metricName = metricNames[metric];
-  if (!currentMetric.hasData) $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 暂无${metricName}数据`;
-  else if (!previousMetric.hasData) $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 暂无上一周期基准`;
-  else if (metric === 'accuracy' || metric === 'score') {
-    const delta = currentMetric.value - previousMetric.value, unit = metric === 'accuracy' ? ' 个百分点' : ' 分';
-    $('#trendPeriodSummary').textContent = Math.abs(delta) < .1 ? `最近 ${days} 天 · 与前期基本持平` : `最近 ${days} 天 · 较前期${delta > 0 ? '提升' : '下降'} ${Math.abs(Math.round(delta * 10) / 10)}${unit}`;
-  } else {
-    const delta = (currentMetric.value / previousMetric.value - 1) * 100;
-    $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 较前期${delta >= 0 ? '增加' : '减少'} ${Math.abs(Math.round(delta))}%`;
-  }
+function renderTrendSummary(metric, totals, currentMetric, activeDays) {
   if (metric === 'duration') $('#trendSummary').innerHTML = `<span><small>训练</small><strong>${totals.count} 次</strong></span><span><small>累计</small><strong>${formatDuration(totals.duration)}</strong></span><span><small>活跃</small><strong>${activeDays} 天</strong></span>`;
   else if (metric === 'questions') $('#trendSummary').innerHTML = `<span><small>刷题</small><strong>${totals.questions} 题</strong></span><span><small>训练</small><strong>${totals.questionSessions} 次</strong></span><span><small>活跃</small><strong>${activeDays} 天</strong></span>`;
   else if (metric === 'accuracy') $('#trendSummary').innerHTML = `<span><small>正确率</small><strong>${currentMetric.hasData ? formatTrendValue(metric, currentMetric.value) : '暂无'}</strong></span><span><small>答对</small><strong>${totals.correct}/${totals.accuracyQuestions || 0}</strong></span><span><small>有效</small><strong>${activeDays} 天</strong></span>`;
   else $('#trendSummary').innerHTML = `<span><small>平均分</small><strong>${currentMetric.hasData ? formatTrendValue(metric, currentMetric.value) : '暂无'}</strong></span><span><small>模考</small><strong>${totals.scoreCount} 次</strong></span><span><small>有效</small><strong>${activeDays} 天</strong></span>`;
+}
+
+function renderTrendBars(buckets, days, metric, metricName) {
   const maxValue = metric === 'accuracy' || metric === 'score' ? 100 : Math.max(...buckets.map(bucket => bucket.metric.value), 1), hasAnyData = buckets.some(bucket => bucket.metric.hasData);
+  $('#trendChart').dataset.visual = 'bar';
   $('#trendChart').innerHTML = `<div class="trend-bars days-${days} metric-${metric}">${buckets.map((bucket, index) => {
     const ratio = bucket.metric.hasData ? Math.max(3, bucket.metric.value / maxValue * 100) : 0;
     const showLabel = days === 7 || index === 0 || index === days - 1 || (index % 7 === 0 && index < days - 2), label = `${bucket.date.getMonth() + 1}/${bucket.date.getDate()}`;
     const detail = metric === 'accuracy' ? `${formatTrendValue(metric, bucket.metric.value)} · ${bucket.totals.accuracyQuestions} 题` : metric === 'score' ? `${formatTrendValue(metric, bucket.metric.value)} · ${bucket.totals.scoreCount} 次` : formatTrendValue(metric, bucket.metric.value);
     return `<div class="trend-day${bucket.metric.hasData ? '' : ' no-data'}" title="${escapeAttribute(`${label} · ${bucket.metric.hasData ? detail : '暂无数据'}`)}"><div class="trend-bar-track"><i style="height:${ratio}%"></i></div><small>${showLabel ? label : ''}</small></div>`;
   }).join('')}</div>${hasAnyData ? '' : `<div class="trend-empty-overlay">最近 ${days} 天暂无${metricName}数据</div>`}`;
+}
+
+function getTrendComposition(records, metric) {
+  if (metric === 'accuracy') {
+    const totals = createTrendTotals(records); if (!totals.accuracyQuestions) return [];
+    return [{ label: '做对', value: totals.correct }, { label: '做错', value: totals.accuracyQuestions - totals.correct }].filter(item => item.value > 0);
+  }
+  if (metric === 'score') {
+    const bands = [{ label: '80 分及以上', value: 0 }, { label: '70-79 分', value: 0 }, { label: '60-69 分', value: 0 }, { label: '60 分以下', value: 0 }];
+    records.map(record => toScore(record.score)).filter(Number.isFinite).forEach(score => { bands[score >= 80 ? 0 : score >= 70 ? 1 : score >= 60 ? 2 : 3].value += 1; });
+    return bands.filter(item => item.value > 0);
+  }
+  const values = new Map();
+  records.forEach(record => {
+    const value = metric === 'duration' ? Number(record.duration) || 0 : toPositiveInt(record.questions) || 0;
+    if (value > 0) values.set(record.module || '未分类', (values.get(record.module || '未分类') || 0) + value);
+  });
+  return [...values].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+}
+
+function renderTrendDonut(records, metric, metricName, days) {
+  const segments = getTrendComposition(records, metric), total = segments.reduce((sum, item) => sum + item.value, 0), chart = $('#trendChart');
+  chart.dataset.visual = 'donut';
+  if (!segments.length || !total) { chart.innerHTML = `<div class="trend-empty-overlay">最近 ${days} 天暂无${metricName}构成数据</div>`; return; }
+  let progress = 0;
+  const colored = segments.map((item, index) => {
+    const start = progress, percent = item.value / total * 100; progress += percent;
+    return { ...item, color: ANALYTICS_COLORS[index % ANALYTICS_COLORS.length], start, end: progress, percent };
+  }), gradient = colored.map(item => `${item.color} ${item.start}% ${item.end}%`).join(', ');
+  const totalLabel = metric === 'duration' ? formatDuration(total) : metric === 'questions' ? `${total} 题` : metric === 'accuracy' ? `${total} 题` : `${total} 次`;
+  chart.innerHTML = `<div class="composition-layout"><div class="donut-chart" style="background:conic-gradient(${gradient})"><div><strong>${totalLabel}</strong><small>${metric === 'accuracy' ? '作答结果' : metricName}</small></div></div><div class="composition-legend">${colored.map(item => `<div><i style="background:${item.color}"></i><span>${escapeHTML(item.label)}</span><strong>${metric === 'duration' ? formatDuration(item.value) : metric === 'questions' || metric === 'accuracy' ? `${item.value} 题` : `${item.value} 次`} · ${Math.round(item.percent)}%</strong></div>`).join('')}</div></div>`;
+}
+
+function getRadarModules(records) {
+  return getOrderedSectionPresets().map(preset => {
+    const stats = getModuleAnalytics(records, preset.name), questions = MOCK_PACING_QUESTION_COUNTS[preset.name] || SECTION_QUESTION_COUNTS[preset.name], targetPace = questions ? preset.seconds / questions : null;
+    if (!stats.questions) return null;
+    const parts = [];
+    if (stats.pace && targetPace) parts.push({ value: Math.min(100, targetPace / stats.pace * 100), weight: .45 });
+    if (stats.accuracy !== null) parts.push({ value: stats.accuracy, weight: .4 });
+    if (stats.stability !== null) parts.push({ value: Math.max(0, Math.min(100, (0.5 - stats.stability) / .5 * 100)), weight: .15 });
+    const weight = parts.reduce((sum, part) => sum + part.weight, 0), score = weight ? parts.reduce((sum, part) => sum + part.value * part.weight, 0) / weight : 0;
+    return { name: preset.name, score, pace: stats.pace, targetPace, accuracy: stats.accuracy, stability: stats.stability };
+  }).filter(Boolean);
+}
+
+function renderTrendRadar(records, days) {
+  const modules = getRadarModules(records), chart = $('#trendChart'); chart.dataset.visual = 'radar';
+  if (!modules.length) { chart.innerHTML = `<div class="trend-empty-overlay">最近 ${days} 天暂无专项训练数据</div>`; $('#trendSummary').innerHTML = `<span><small>覆盖专项</small><strong>0 个</strong></span><span><small>综合状态</small><strong>暂无</strong></span><span><small>达标专项</small><strong>0 个</strong></span>`; return; }
+  const size = 280, cx = 140, cy = 132, radius = 83, pointAt = (index, distance) => { const angle = -Math.PI / 2 + index * Math.PI * 2 / modules.length; return [cx + Math.cos(angle) * distance, cy + Math.sin(angle) * distance]; }, polygon = (ratio) => modules.map((_, index) => pointAt(index, radius * ratio).join(',')).join(' '), area = modules.map((module, index) => pointAt(index, radius * module.score / 100).join(',')).join(' '), average = modules.reduce((sum, module) => sum + module.score, 0) / modules.length, reached = modules.filter(module => module.score >= 75).length;
+  $('#trendSummary').innerHTML = `<span><small>覆盖专项</small><strong>${modules.length} 个</strong></span><span><small>综合状态</small><strong>${Math.round(average)} 分</strong></span><span><small>达标专项</small><strong>${reached} 个</strong></span>`;
+  chart.innerHTML = `<div class="radar-layout"><svg class="radar-chart" viewBox="0 0 ${size} 260" role="img" aria-label="专项综合状态雷达图">${[.25, .5, .75, 1].map(level => `<polygon points="${polygon(level)}" class="radar-grid"></polygon>`).join('')}${modules.map((module, index) => { const [x, y] = pointAt(index, radius); const [labelX, labelY] = pointAt(index, radius + 22); return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" class="radar-axis"></line><text x="${labelX}" y="${labelY}" text-anchor="middle">${escapeHTML(module.name)}</text>`; }).join('')}<polygon points="${area}" class="radar-area"></polygon>${modules.map((module, index) => { const [x, y] = pointAt(index, radius * module.score / 100); return `<circle cx="${x}" cy="${y}" r="4" class="radar-point"><title>${escapeHTML(`${module.name} · 综合 ${Math.round(module.score)} 分`)}</title></circle>`; }).join('')}</svg><div class="radar-legend">${modules.map(module => `<div><strong>${escapeHTML(module.name)}</strong><span>综合 ${Math.round(module.score)} 分${module.accuracy !== null ? ` · 正确率 ${Math.round(module.accuracy)}%` : ''}</span></div>`).join('')}</div></div>`;
+}
+
+function renderTrainingTrend(now) {
+  const days = state.analyticsDays, metric = state.trendMetric, visual = state.trendVisual, current = getPeriodRecords(days, 0, now), previous = getPeriodRecords(days, 1, now);
+  const buckets = Array.from({ length: days }, (_, index) => {
+    const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - days + index + 1);
+    return { date, key: getDayKey(date), records: [] };
+  }), byKey = new Map(buckets.map(bucket => [bucket.key, bucket]));
+  current.forEach(record => { const bucket = byKey.get(getDayKey(new Date(record.endedAt))); if (bucket) bucket.records.push(record); });
+  buckets.forEach(bucket => { bucket.totals = createTrendTotals(bucket.records); bucket.metric = getTrendValue(bucket.totals, metric); });
+  const totals = createTrendTotals(current), previousTotals = createTrendTotals(previous), currentMetric = getTrendValue(totals, metric), previousMetric = getTrendValue(previousTotals, metric), activeDays = buckets.filter(bucket => bucket.metric.hasData).length, metricNames = { duration: '训练时长', questions: '刷题数量', accuracy: '正确率', score: '模考成绩' }, metricName = metricNames[metric], visualNames = { bar: '按日变化', donut: '结构占比', radar: '专项综合' };
+  $('#trendMetricSwitch').classList.toggle('hidden', visual === 'radar');
+  if (!currentMetric.hasData) $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 暂无${metricName}数据 · ${visualNames[visual]}`;
+  else if (!previousMetric.hasData) $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 暂无上一周期基准 · ${visualNames[visual]}`;
+  else if (metric === 'accuracy' || metric === 'score') {
+    const delta = currentMetric.value - previousMetric.value, unit = metric === 'accuracy' ? ' 个百分点' : ' 分';
+    $('#trendPeriodSummary').textContent = `${Math.abs(delta) < .1 ? `最近 ${days} 天 · 与前期基本持平` : `最近 ${days} 天 · 较前期${delta > 0 ? '提升' : '下降'} ${Math.abs(Math.round(delta * 10) / 10)}${unit}`} · ${visualNames[visual]}`;
+  } else {
+    const delta = (currentMetric.value / previousMetric.value - 1) * 100;
+    $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 较前期${delta >= 0 ? '增加' : '减少'} ${Math.abs(Math.round(delta))}% · ${visualNames[visual]}`;
+  }
+  if (visual === 'radar') $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 速度、正确率与稳定性 · 专项综合`;
+  renderTrendSummary(metric, totals, currentMetric, activeDays);
+  if (visual === 'donut') renderTrendDonut(current, metric, metricName, days);
+  else if (visual === 'radar') renderTrendRadar(current, days);
+  else renderTrendBars(buckets, days, metric, metricName);
 }
 
 function renderModuleBaselines(now) {
@@ -935,6 +1000,7 @@ function getHistoryBenchmark(record) {
 function renderPersonalAnalytics(now) {
   $$('[data-analytics-days]').forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.analyticsDays) === state.analyticsDays)));
   $$('[data-trend-metric]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.trendMetric === state.trendMetric)));
+  $$('[data-trend-visual]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.trendVisual === state.trendVisual)));
   $('#baselinePeriodSummary').textContent = `最近 ${state.analyticsDays} 天 · 速度 / 正确率 / 稳定性`;
   $('#reasonPeriodSummary').textContent = `最近 ${state.analyticsDays} 天 · 仅统计逐题错误标记`;
   renderTrainingTrend(now); renderModuleBaselines(now); renderReasonTrends(now);
@@ -1263,6 +1329,7 @@ $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm
 $('#historyFilter').addEventListener('change', renderStats);
 $$('[data-analytics-days]').forEach(button => button.addEventListener('click', () => { state.analyticsDays = Number(button.dataset.analyticsDays); renderStats(); }));
 $$('[data-trend-metric]').forEach(button => button.addEventListener('click', () => { state.trendMetric = button.dataset.trendMetric; renderStats(); }));
+$$('[data-trend-visual]').forEach(button => button.addEventListener('click', () => { state.trendVisual = button.dataset.trendVisual; renderStats(); }));
 $$('[data-stats-view]').forEach(button => button.addEventListener('click', () => setStatsView(button.dataset.statsView)));
 $('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});

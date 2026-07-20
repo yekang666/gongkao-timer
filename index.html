@@ -12,7 +12,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">考</span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v1.6.0</span></div><small>专注每一次提速</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v1.7.0</span></div><small>专注每一次提速</small></div>
       </div>
       <div class="top-actions">
         <button class="icon-button" id="pipBtn" type="button" title="开启悬浮计时" aria-label="开启悬浮计时">▣</button>
@@ -134,17 +134,20 @@
 
   <dialog id="lapDetailDialog">
     <div class="dialog-icon">⌁</div>
-    <span class="dialog-kicker">逐题用时复盘</span>
+    <span class="dialog-kicker">逐题复盘</span>
     <h2 id="lapDetailTitle">本次逐题表现</h2>
     <p id="lapDetailMessage"></p>
     <div class="lap-detail-summary">
       <span><small>打点题数</small><strong id="lapDetailCount">0 题</strong></span>
       <span><small>平均用时</small><strong id="lapDetailAverage">00:00</strong></span>
       <span><small>最慢一题</small><strong id="lapDetailSlowest">00:00</strong></span>
+      <span><small>已复盘</small><strong id="lapReviewProgress">0 / 0</strong></span>
     </div>
+    <div class="lap-review-insights" id="lapReviewInsights"></div>
     <div class="lap-detail-list" id="lapDetailList"></div>
     <div class="lap-training-meta hidden" id="lapTrainingMeta"><strong id="lapTrainingMetaSummary"></strong><p id="lapTrainingNote"></p></div>
-    <div class="dialog-actions"><button class="primary" id="closeLapDetailBtn" type="button">完成复盘</button></div>
+    <p class="lap-review-tip">所有标记均可跳过，并可在历史记录中随时补充或修改。</p>
+    <div class="dialog-actions"><button class="secondary" id="closeLapDetailBtn" type="button">稍后再说</button><button class="primary" id="saveLapReviewBtn" type="button">保存逐题复盘</button></div>
   </dialog>
 
   <div class="pip-source" aria-hidden="true">

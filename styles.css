@@ -522,9 +522,36 @@ button:active:not(:disabled) { transform: translateY(1px); }
 
 .module-row, .history-row { border-bottom-color: var(--line); }
 .module-row { min-height: 58px; }
-.history-row { padding: 14px 0; }
+.history-row {
+  padding: 14px 8px;
+  margin: 0 -8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease;
+}
+.history-row:hover {
+  background: color-mix(in srgb, var(--accent-2) 46%, transparent);
+}
+.history-row:focus-visible {
+  outline: 3px solid rgba(23, 98, 71, .24);
+  outline-offset: 2px;
+  background: var(--accent-2);
+}
 .history-main strong { color: var(--text); font-size: 13px; }
 .history-meta, .history-duration { color: var(--muted); font-size: 11px; }
+.history-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+.history-side span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  opacity: .82;
+  white-space: nowrap;
+}
 .delete-record { border-radius: 3px; }
 .delete-record:hover { background: #f7e5e3; color: var(--danger); }
 .history-tools { gap: 8px; }
@@ -710,6 +737,34 @@ dialog p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
 .question-input small { color: var(--muted); font-size: 11px; font-weight: 400; }
 .dialog-actions { gap: 8px; margin-top: 22px; }
 .dialog-actions button { min-height: 42px; }
+#recordEditDialog {
+  width: min(560px, calc(100% - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  text-align: left;
+}
+#recordEditDialog > .dialog-icon,
+#recordEditDialog > .dialog-kicker,
+#recordEditDialog > h2,
+#recordEditDialog > p {
+  text-align: center;
+}
+.record-edit-form { margin-top: 18px; }
+.record-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.record-edit-wide { grid-column: 1 / -1; }
+.record-edit-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  gap: 10px;
+}
+#recordEditDialog .meta-group { margin-top: 18px; }
+#recordEditDialog .meta-choice-row button {
+  min-height: 36px;
+}
 .restore-preview-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -909,6 +964,10 @@ body.dark .mock-report-insights p { background: var(--surface-2); }
   .pacing-status span, .pacing-status strong { display: block; }
   .pacing-status strong { margin-top: 3px; }
   .drawer { padding: 22px 18px 34px; }
+  .history-row { grid-template-columns: minmax(0, 1fr) auto 30px; padding: 13px 6px; margin: 0 -6px; }
+  .history-side span { display: none; }
+  #recordEditDialog { padding: 22px 18px; }
+  .record-edit-grid, .record-edit-pair { grid-template-columns: 1fr; }
   .stats-view-tabs { top: -22px; margin: 0 -18px 22px; padding: 12px 18px 8px; overflow-x: auto; }
   .stats-view-tabs button { min-width: 52px; flex: 0 0 auto; font-size: 11px; }
   .settings-view-tabs { top: -22px; margin-left: -18px; margin-right: -18px; padding-left: 18px; padding-right: 18px; gap: 4px; }

@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.8.0';
+const APP_VERSION = 'v2.9.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -33,7 +33,7 @@ const state = {
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
   laps: [], lastLapElapsed: 0, pacingNotified: [], pendingImport: null,
-  pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', trendVisual: 'bar', statsView: 'overview', settingsView: 'general', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
+  pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, editingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', trendVisual: 'bar', statsView: 'overview', settingsView: 'general', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
   settings: { sound: true, pacing: true, dark: false, fontSize: 1, warning: 60, examCountdown: {}, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
@@ -756,6 +756,133 @@ function finishTrainingMeta(skip = false) {
   }
 }
 
+function toDateTimeLocalValue(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function fromDateTimeLocalValue(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function setDifficultyChoice(containerId, difficulty) {
+  $$(`#${containerId} [data-difficulty]`).forEach(button => {
+    const selected = button.dataset.difficulty === difficulty;
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+}
+
+function openRecordEditor(recordId) {
+  const record = state.records.find(item => item.id === recordId);
+  if (!record) return;
+  const duration = Math.max(1, Math.round(Number(record.duration) || 0));
+  state.editingRecordId = record.id;
+  $('#recordEditTitle').textContent = `${record.module} · 修改记录`;
+  $('#recordEditMessage').textContent = `这条记录保存于 ${new Date(record.endedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+  $('#editRecordModule').value = record.module || '';
+  $('#editRecordEndedAt').value = toDateTimeLocalValue(record.endedAt);
+  $('#editRecordMinutes').value = String(Math.floor(duration / 60));
+  $('#editRecordSeconds').value = String(duration % 60);
+  $('#editRecordScore').value = toScore(record.score) === null ? '' : String(toScore(record.score));
+  $('#editRecordQuestions').value = toPositiveInt(record.questions) === null ? '' : String(toPositiveInt(record.questions));
+  $('#editRecordCorrect').value = toNonNegativeInt(record.correct) === null ? '' : String(toNonNegativeInt(record.correct));
+  $('#editRecordPapers').value = toPositiveInt(record.papers) === null ? '' : String(toPositiveInt(record.papers));
+  $('#editRecordSource').value = record.source || '';
+  $('#editRecordNote').value = record.note || '';
+  setDifficultyChoice('editRecordDifficultyChoices', record.difficulty);
+  $('#recordEditDialog').showModal();
+  $('#editRecordModule').focus();
+}
+
+function closeRecordEditor() {
+  state.editingRecordId = null;
+  const dialog = $('#recordEditDialog');
+  if (dialog.open) dialog.close();
+}
+
+function saveRecordEditor() {
+  const index = state.records.findIndex(item => item.id === state.editingRecordId);
+  if (index < 0) return closeRecordEditor();
+  const record = state.records[index];
+  const moduleName = normalizeText($('#editRecordModule').value, 40);
+  if (!moduleName) { showToast('题型名称不能为空'); $('#editRecordModule').focus(); return; }
+  const minutes = Math.floor(Number($('#editRecordMinutes').value || 0));
+  const seconds = Math.floor(Number($('#editRecordSeconds').value || 0));
+  if (!Number.isFinite(minutes) || !Number.isFinite(seconds) || minutes < 0 || seconds < 0 || seconds > 59) {
+    showToast('用时格式不正确');
+    $('#editRecordMinutes').focus();
+    return;
+  }
+  const duration = minutes * 60 + seconds;
+  if (duration <= 0 || duration > 6 * 60 * 60) {
+    showToast('用时需要在 1 秒到 6 小时之间');
+    $('#editRecordMinutes').focus();
+    return;
+  }
+  const endedAt = fromDateTimeLocalValue($('#editRecordEndedAt').value);
+  if (!endedAt) { showToast('请选择有效的结束时间'); $('#editRecordEndedAt').focus(); return; }
+  const scoreRaw = $('#editRecordScore').value.trim();
+  const score = toScore(scoreRaw);
+  if (scoreRaw && score === null) { showToast('分数需要在 0 到 100 之间'); $('#editRecordScore').focus(); return; }
+  const questionsRaw = $('#editRecordQuestions').value.trim();
+  const questions = questionsRaw ? toPositiveInt(questionsRaw) : null;
+  if (questionsRaw && questions === null) { showToast('题量需要大于 0'); $('#editRecordQuestions').focus(); return; }
+  const correctRaw = $('#editRecordCorrect').value.trim();
+  const correct = correctRaw ? toNonNegativeInt(correctRaw) : null;
+  if (correctRaw && correct === null) { showToast('正确数不能小于 0'); $('#editRecordCorrect').focus(); return; }
+  if (correct !== null && questions === null) { showToast('填写正确数前，先补上题量'); $('#editRecordQuestions').focus(); return; }
+  if (questions !== null && correct !== null && correct > questions) { showToast('正确数不能大于题量'); $('#editRecordCorrect').focus(); return; }
+  const papersRaw = $('#editRecordPapers').value.trim();
+  const papers = papersRaw ? toPositiveInt(papersRaw) : null;
+  if (papersRaw && papers === null) { showToast('套数需要大于 0'); $('#editRecordPapers').focus(); return; }
+  const endedDate = new Date(endedAt);
+  const nextRecord = normalizeRecords([{
+    ...record,
+    module: moduleName,
+    duration,
+    startedAt: new Date(endedDate.getTime() - duration * 1000).toISOString(),
+    endedAt,
+    questions,
+    correct,
+    score,
+    papers,
+    source: $('#editRecordSource').value,
+    difficulty: $('#editRecordDifficultyChoices [aria-pressed="true"]')?.dataset.difficulty || null,
+    note: $('#editRecordNote').value,
+    moduleResults: moduleName === '行测模考' ? record.moduleResults : [],
+    updatedAt: new Date().toISOString()
+  }])[0];
+  state.records[index] = nextRecord;
+  state.records.sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt));
+  saveRecords();
+  renderStats();
+  closeRecordEditor();
+  showToast('训练记录已更新');
+}
+
+function shouldIgnoreRecordOpen(event) {
+  return Boolean(event.target.closest('button,a,input,select,textarea,label,[contenteditable="true"]'));
+}
+
+function openRecordFromHistoryEvent(event) {
+  if (shouldIgnoreRecordOpen(event)) return;
+  const row = event.target.closest('[data-record-id]');
+  if (row) openRecordEditor(row.dataset.recordId);
+}
+
+function openRecordFromHistoryKey(event) {
+  if (!['Enter', ' '].includes(event.key) || shouldIgnoreRecordOpen(event)) return;
+  const row = event.target.closest('[data-record-id]');
+  if (!row) return;
+  event.preventDefault();
+  openRecordEditor(row.dataset.recordId);
+}
+
 function finishSpeedSession() {
   tick(); if (state.elapsed < .5) return;
   state.pendingSpeed = { duration: Math.round(state.elapsed), startedAt: state.startedAt, endedAt: new Date().toISOString(), laps: normalizeLaps(state.laps) };
@@ -1324,11 +1451,11 @@ function renderStats() {
     const lapLink = lapCount ? `<button class="lap-detail-button" data-lap-id="${escapeAttribute(r.id)}" type="button">${reviewCounts.reviewed ? `逐题复盘 ${reviewCounts.reviewed}/${lapCount} 题` : `开始 ${lapCount} 题逐题复盘`}</button>` : '';
     const tags = [r.source ? `<span class="record-tag source">来源：${escapeHTML(r.source)}</span>` : '', r.difficulty ? `<span class="record-tag difficulty">${r.difficulty}</span>` : ''].filter(Boolean).join('');
     const notePreview = r.note ? (r.note.length > 120 ? `${r.note.slice(0, 120)}…` : r.note) : '';
-    const moduleResults = normalizeModuleResults(r.moduleResults), reviewedModuleResults = moduleResults.filter(result => result.correct !== null), weakestModule = reviewedModuleResults.sort((a, b) => a.correct / a.questions - b.correct / b.questions)[0];
+    const moduleResults = r.module === '行测模考' ? normalizeModuleResults(r.moduleResults) : [], reviewedModuleResults = moduleResults.filter(result => result.correct !== null), weakestModule = reviewedModuleResults.sort((a, b) => a.correct / a.questions - b.correct / b.questions)[0];
     const moduleReviewHtml = reviewedModuleResults.length ? `<span class="history-module-review">模块复盘 ${reviewedModuleResults.length}/${MOCK_MODULE_NAMES.length} 项${weakestModule ? ` · ${escapeHTML(weakestModule.module)} ${formatAccuracy(weakestModule.correct, weakestModule.questions)}` : ''}</span>` : '';
     const metaHtml = tags || notePreview || moduleReviewHtml ? `<div class="record-meta-tags">${tags}${moduleReviewHtml}</div>${notePreview ? `<span class="history-note">“${escapeHTML(notePreview)}”</span>` : ''}` : '';
     const benchmark = getHistoryBenchmark(r), benchmarkHtml = benchmark ? `<span class="history-benchmark">相对基准 · ${benchmark}</span>` : '';
-    return `<div class="history-row"><div class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${benchmarkHtml}${metaHtml}${reportLink}${lapLink}</div><strong class="history-duration">${formatClock(r.duration)}</strong><button class="delete-record" data-id="${escapeHTML(r.id)}" title="删除记录">×</button></div>`;
+    return `<div class="history-row" data-record-id="${escapeAttribute(r.id)}" role="button" tabindex="0" aria-label="修改${escapeAttribute(r.module)}记录"><div class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${benchmarkHtml}${metaHtml}${reportLink}${lapLink}</div><div class="history-side"><strong class="history-duration">${formatClock(r.duration)}</strong><span>点击编辑</span></div><button class="delete-record" data-id="${escapeAttribute(r.id)}" title="删除记录">×</button></div>`;
   }).join('') : `<div class="empty-state">${historyFilter ? '没有符合筛选条件的记录' : '完成一次训练后，记录会显示在这里'}</div>`;
   $$('.delete-record').forEach(btn => btn.addEventListener('click', () => { if (!confirm('确定删除这条训练记录吗？此操作无法撤销。')) return; state.records = state.records.filter(r => r.id !== btn.dataset.id); saveRecords(); renderStats(); }));
   $$('.lap-detail-button').forEach(btn => btn.addEventListener('click', () => openLapDetail(btn.dataset.lapId)));
@@ -1804,7 +1931,14 @@ $$('#difficultyChoices [data-difficulty]').forEach(button => button.addEventList
   $$('#difficultyChoices [data-difficulty]').forEach(item => { item.classList.remove('selected'); item.setAttribute('aria-pressed', 'false'); });
   if (willSelect) { button.classList.add('selected'); button.setAttribute('aria-pressed', 'true'); }
 }));
+$$('#editRecordDifficultyChoices [data-difficulty]').forEach(button => button.addEventListener('click', () => {
+  const willSelect = button.getAttribute('aria-pressed') !== 'true';
+  setDifficultyChoice('editRecordDifficultyChoices', willSelect ? button.dataset.difficulty : null);
+}));
 $('#skipTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(true)); $('#confirmTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(false));
+$('#recordEditForm').addEventListener('submit', event => { event.preventDefault(); saveRecordEditor(); });
+$('#cancelRecordEditBtn').addEventListener('click', closeRecordEditor);
+$('#recordEditDialog').addEventListener('cancel', event => { event.preventDefault(); closeRecordEditor(); });
 $('#skipMockModuleBtn').addEventListener('click', () => finishMockModuleReview(true)); $('#saveMockModuleBtn').addEventListener('click', () => finishMockModuleReview(false));
 $('#mockModuleDialog').addEventListener('cancel', event => { event.preventDefault(); finishMockModuleReview(true); });
 $('#closeMockReportBtn').addEventListener('click', () => $('#mockReportDialog').close());
@@ -1817,6 +1951,8 @@ $('#lapDetailDialog').addEventListener('cancel', event => { event.preventDefault
 $('#statsBtn').addEventListener('click',()=>{renderStats();setStatsView(state.statsView,false);openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>{setSettingsView(state.settingsView,false);openDrawer($('#settingsDrawer'))});$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
 $('#historyFilter').addEventListener('change', renderStats);
+$('#historyList').addEventListener('click', openRecordFromHistoryEvent);
+$('#historyList').addEventListener('keydown', openRecordFromHistoryKey);
 $$('[data-analytics-days]').forEach(button => button.addEventListener('click', () => { state.analyticsDays = Number(button.dataset.analyticsDays); renderStats(); }));
 $$('[data-trend-metric]').forEach(button => button.addEventListener('click', () => { state.trendMetric = button.dataset.trendMetric; renderStats(); }));
 $$('[data-trend-visual]').forEach(button => button.addEventListener('click', () => { state.trendVisual = button.dataset.trendVisual; renderStats(); }));

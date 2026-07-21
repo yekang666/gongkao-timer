@@ -783,6 +783,12 @@ dialog p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
   grid-template-columns: minmax(0, 1fr) 92px;
   gap: 10px;
 }
+#editRecordModule[readonly] {
+  border-color: var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: default;
+}
 #recordEditDialog .meta-group { margin-top: 18px; }
 #recordEditDialog .meta-choice-row button {
   min-height: 36px;

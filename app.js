@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.9.1';
+const APP_VERSION = 'v2.9.2';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -796,7 +796,7 @@ function openRecordEditor(recordId) {
   $('#editRecordNote').value = record.note || '';
   setDifficultyChoice('editRecordDifficultyChoices', record.difficulty);
   $('#recordEditDialog').showModal();
-  $('#editRecordModule').focus();
+  $('#editRecordEndedAt').focus();
 }
 
 function closeRecordEditor() {
@@ -809,8 +809,7 @@ function saveRecordEditor() {
   const index = state.records.findIndex(item => item.id === state.editingRecordId);
   if (index < 0) return closeRecordEditor();
   const record = state.records[index];
-  const moduleName = normalizeText($('#editRecordModule').value, 40);
-  if (!moduleName) { showToast('题型名称不能为空'); $('#editRecordModule').focus(); return; }
+  const moduleName = record.module;
   const minutes = Math.floor(Number($('#editRecordMinutes').value || 0));
   const seconds = Math.floor(Number($('#editRecordSeconds').value || 0));
   if (!Number.isFinite(minutes) || !Number.isFinite(seconds) || minutes < 0 || seconds < 0 || seconds > 59) {

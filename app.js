@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.9.0';
+const APP_VERSION = 'v2.9.1';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -870,6 +870,8 @@ function shouldIgnoreRecordOpen(event) {
 }
 
 function openRecordFromHistoryEvent(event) {
+  const editButton = event.target.closest('[data-edit-record-id]');
+  if (editButton) { openRecordEditor(editButton.dataset.editRecordId); return; }
   if (shouldIgnoreRecordOpen(event)) return;
   const row = event.target.closest('[data-record-id]');
   if (row) openRecordEditor(row.dataset.recordId);
@@ -1453,9 +1455,9 @@ function renderStats() {
     const notePreview = r.note ? (r.note.length > 120 ? `${r.note.slice(0, 120)}…` : r.note) : '';
     const moduleResults = r.module === '行测模考' ? normalizeModuleResults(r.moduleResults) : [], reviewedModuleResults = moduleResults.filter(result => result.correct !== null), weakestModule = reviewedModuleResults.sort((a, b) => a.correct / a.questions - b.correct / b.questions)[0];
     const moduleReviewHtml = reviewedModuleResults.length ? `<span class="history-module-review">模块复盘 ${reviewedModuleResults.length}/${MOCK_MODULE_NAMES.length} 项${weakestModule ? ` · ${escapeHTML(weakestModule.module)} ${formatAccuracy(weakestModule.correct, weakestModule.questions)}` : ''}</span>` : '';
-    const metaHtml = tags || notePreview || moduleReviewHtml ? `<div class="record-meta-tags">${tags}${moduleReviewHtml}</div>${notePreview ? `<span class="history-note">“${escapeHTML(notePreview)}”</span>` : ''}` : '';
+    const metaHtml = tags || notePreview || moduleReviewHtml ? `<span class="record-meta-tags">${tags}${moduleReviewHtml}</span>${notePreview ? `<span class="history-note">“${escapeHTML(notePreview)}”</span>` : ''}` : '';
     const benchmark = getHistoryBenchmark(r), benchmarkHtml = benchmark ? `<span class="history-benchmark">相对基准 · ${benchmark}</span>` : '';
-    return `<div class="history-row" data-record-id="${escapeAttribute(r.id)}" role="button" tabindex="0" aria-label="修改${escapeAttribute(r.module)}记录"><div class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${benchmarkHtml}${metaHtml}${reportLink}${lapLink}</div><div class="history-side"><strong class="history-duration">${formatClock(r.duration)}</strong><span>点击编辑</span></div><button class="delete-record" data-id="${escapeAttribute(r.id)}" title="删除记录">×</button></div>`;
+    return `<div class="history-row" data-record-id="${escapeAttribute(r.id)}"><button class="history-edit-trigger" data-edit-record-id="${escapeAttribute(r.id)}" type="button" aria-label="修改${escapeAttribute(r.module)}记录"><span class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${benchmarkHtml}${metaHtml}</span><span class="history-side"><strong class="history-duration">${formatClock(r.duration)}</strong><span>点击编辑</span></span></button><button class="delete-record" data-id="${escapeAttribute(r.id)}" title="删除记录">×</button>${reportLink || lapLink ? `<div class="history-record-actions">${reportLink}${lapLink}</div>` : ''}</div>`;
   }).join('') : `<div class="empty-state">${historyFilter ? '没有符合筛选条件的记录' : '完成一次训练后，记录会显示在这里'}</div>`;
   $$('.delete-record').forEach(btn => btn.addEventListener('click', () => { if (!confirm('确定删除这条训练记录吗？此操作无法撤销。')) return; state.records = state.records.filter(r => r.id !== btn.dataset.id); saveRecords(); renderStats(); }));
   $$('.lap-detail-button').forEach(btn => btn.addEventListener('click', () => openLapDetail(btn.dataset.lapId)));

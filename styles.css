@@ -523,19 +523,35 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .module-row, .history-row { border-bottom-color: var(--line); }
 .module-row { min-height: 58px; }
 .history-row {
+  grid-template-columns: minmax(0, 1fr) 28px;
+  gap: 8px 10px;
   padding: 14px 8px;
   margin: 0 -8px;
   border-radius: 5px;
-  cursor: pointer;
+  cursor: default;
   transition: background .16s ease, border-color .16s ease;
 }
 .history-row:hover {
   background: color-mix(in srgb, var(--accent-2) 46%, transparent);
 }
-.history-row:focus-visible {
+.history-edit-trigger:focus-visible {
   outline: 3px solid rgba(23, 98, 71, .24);
   outline-offset: 2px;
   background: var(--accent-2);
+}
+.history-edit-trigger {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: rgba(23, 98, 71, .12);
 }
 .history-main strong { color: var(--text); font-size: 13px; }
 .history-meta, .history-duration { color: var(--muted); font-size: 11px; }
@@ -551,6 +567,12 @@ button:active:not(:disabled) { transform: translateY(1px); }
   font-weight: 700;
   opacity: .82;
   white-space: nowrap;
+}
+.history-record-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .delete-record { border-radius: 3px; }
 .delete-record:hover { background: #f7e5e3; color: var(--danger); }
@@ -964,7 +986,8 @@ body.dark .mock-report-insights p { background: var(--surface-2); }
   .pacing-status span, .pacing-status strong { display: block; }
   .pacing-status strong { margin-top: 3px; }
   .drawer { padding: 22px 18px 34px; }
-  .history-row { grid-template-columns: minmax(0, 1fr) auto 30px; padding: 13px 6px; margin: 0 -6px; }
+  .history-row { grid-template-columns: minmax(0, 1fr) 30px; padding: 13px 6px; margin: 0 -6px; }
+  .history-edit-trigger { grid-template-columns: minmax(0, 1fr) auto; }
   .history-side span { display: none; }
   #recordEditDialog { padding: 22px 18px; }
   .record-edit-grid, .record-edit-pair { grid-template-columns: 1fr; }

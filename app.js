@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.6.2';
+const APP_VERSION = 'v2.7.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -1803,4 +1803,7 @@ $('#sectionTimeGrid').addEventListener('dragstart', event => event.preventDefaul
 $('#exportDataBtn').addEventListener('click', exportData); $('#exportCsvBtn').addEventListener('click', exportRecordsCsv); $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click()); $('#importDataInput').addEventListener('change', e => { importDataFile(e.target.files[0]); e.target.value = ''; });
 $('#cancelRestoreBtn').addEventListener('click', cancelRestoreImport); $('#confirmRestoreBtn').addEventListener('click', confirmRestoreImport);
 $('#pipBtn').addEventListener('click',togglePip);
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(error => console.warn('Service Worker 注册失败', error)));
+}
 window.addEventListener('beforeunload', () => { stopInterval(); stopMobilePipSyncLoop(); }); applyCustomDurations(); applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); renderDataManagementSummary(); render();

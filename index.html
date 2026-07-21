@@ -17,7 +17,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><img src="assets/app-icon.png" alt=""></span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.6.0</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.6.1</span></div><small>训练工作台</small></div>
       </div>
       <div class="exam-countdown" id="examCountdown">
         <button class="exam-countdown-main" id="examCountdownOpenBtn" type="button" title="设置考试倒计时">
@@ -48,7 +48,10 @@
           <span class="divider">·</span>
           <span id="sessionTitle">行测模考</span>
         </div>
-        <div class="timer" id="timerDisplay" aria-live="polite">02:00:00</div>
+        <div class="timer-visual">
+          <div class="timer" id="timerDisplay" aria-live="polite">02:00:00</div>
+          <div class="pause-overlay" id="pauseOverlay" role="status" aria-live="polite" aria-hidden="true"><strong>已暂停</strong><span>点击“继续”恢复计时</span></div>
+        </div>
         <p class="timer-hint" id="timerHint">建议按正式考试节奏完成，计时结束将自动记录</p>
 
         <div class="preset-area" id="presetArea">

@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.7.0';
+const APP_VERSION = 'v2.8.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -1469,6 +1469,27 @@ function normalizeImportedData(data) {
   return { settings: mergedSettings, records: normalizeRecords(importedRecords) };
 }
 
+function getRecordMergeKey(record) {
+  const id = record?.id === null || record?.id === undefined ? '' : String(record.id).trim();
+  if (id) return `id:${id}`;
+  return `fallback:${[
+    record?.mode, record?.module, record?.startedAt, record?.endedAt,
+    record?.duration, record?.planned, record?.questions, record?.correct,
+    record?.score, record?.papers
+  ].map(value => String(value ?? '')).join('|')}`;
+}
+
+function getMergeableRecordCount(records) {
+  const existingKeys = new Set(state.records.map(getRecordMergeKey));
+  const incomingKeys = new Set();
+  return records.filter(record => {
+    const key = getRecordMergeKey(record);
+    if (existingKeys.has(key) || incomingKeys.has(key)) return false;
+    incomingKeys.add(key);
+    return true;
+  }).length;
+}
+
 function buildImportPreview(rawData, normalized, fileName = '') {
   const importedSettings = rawData && typeof rawData === 'object' && !Array.isArray(rawData) && rawData.settings && typeof rawData.settings === 'object' ? rawData.settings : {};
   const importedConfiguration = rawData && typeof rawData === 'object' && !Array.isArray(rawData) && rawData.configuration && typeof rawData.configuration === 'object' ? rawData.configuration : {};
@@ -1480,6 +1501,7 @@ function buildImportPreview(rawData, normalized, fileName = '') {
     appVersion: rawData?.appVersion || '未标注',
     exportedAt: rawData?.exportedAt || '',
     recordCount: normalized.records.length,
+    mergeableRecordCount: getMergeableRecordCount(normalized.records),
     hasSettings: Boolean(Object.keys(importedSettings).length || Object.keys(importedConfiguration).length),
     hasExamCountdown: Boolean(examCountdown.date),
     hasSectionDurations: Boolean(sectionDurations && typeof sectionDurations === 'object' && Object.keys(sectionDurations).length),
@@ -1488,17 +1510,19 @@ function buildImportPreview(rawData, normalized, fileName = '') {
 }
 
 function renderRestorePreview(preview) {
-  $('#restorePreviewMessage').textContent = `${preview.fileName ? `文件：${preview.fileName}。` : ''}请确认这就是你想恢复到当前设备的备份。`;
+  $('#restorePreviewMessage').textContent = `${preview.fileName ? `文件：${preview.fileName}。` : ''}请选择一种恢复方式，操作前可以先查看下面的内容。`;
   const rows = [
     ['备份时间', preview.exportedAt ? formatExportDateTime(preview.exportedAt) : '未标注'],
     ['来自版本', preview.appVersion],
     ['训练记录', `${preview.recordCount} 条`],
+    ['可合并记录', `${preview.mergeableRecordCount} 条`],
     ['个人设置', preview.hasSettings ? '包含' : '未发现'],
     ['考试倒计时', preview.hasExamCountdown ? '包含' : '未设置'],
     ['专项时间', preview.hasSectionDurations ? '包含' : '使用默认'],
     ['答题顺序', preview.hasSectionOrder ? '包含' : '使用默认']
   ];
   $('#restorePreviewDetails').innerHTML = rows.map(([label, value]) => `<span><small>${escapeHTML(label)}</small><strong>${escapeHTML(value)}</strong></span>`).join('');
+  $('#restorePreviewWarning').innerHTML = `<strong>合并训练记录</strong>：预计新增 ${preview.mergeableRecordCount} 条，当前设置和已有记录不变。<br><strong>覆盖恢复</strong>：用备份中的设置和记录替换当前数据。`;
 }
 
 function restoreImportedData(data) {
@@ -1506,6 +1530,21 @@ function restoreImportedData(data) {
   applyCustomDurations(); saveSettings(); saveRecords();
   if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; resetTimer(false); }
   applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); render(); renderDataManagementSummary();
+}
+
+function mergeImportedData(data) {
+  const currentCount = state.records.length;
+  const merged = normalizeRecords([...state.records, ...data.records]);
+  const seen = new Set();
+  state.records = merged.filter(record => {
+    const key = getRecordMergeKey(record);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 500);
+  saveRecords();
+  renderStats(); renderDataManagementSummary();
+  return Math.max(0, state.records.length - currentCount);
 }
 
 async function importDataFile(file) {
@@ -1519,15 +1558,22 @@ async function importDataFile(file) {
     const dialog = $('#restorePreviewDialog');
     if (dialog.open) dialog.close();
     dialog.showModal();
+    dialog.scrollTop = 0;
   } catch (error) { showToast(`恢复失败：${error.message}`); }
 }
 
-function confirmRestoreImport() {
+function confirmRestoreImport(mode = 'replace') {
   if (!state.pendingImport) { $('#restorePreviewDialog').close(); return; }
-  restoreImportedData(state.pendingImport);
+  const pendingImport = state.pendingImport;
+  if (mode === 'merge') {
+    const added = mergeImportedData(pendingImport);
+    showToast(added ? `已合并 ${added} 条训练记录` : '没有发现新的训练记录');
+  } else {
+    restoreImportedData(pendingImport);
+    showToast('备份已覆盖恢复');
+  }
   state.pendingImport = null;
   $('#restorePreviewDialog').close();
-  showToast('备份已恢复');
 }
 
 function cancelRestoreImport() {
@@ -1801,7 +1847,7 @@ document.addEventListener('touchcancel', event => { if (sectionSort.inputType ==
 document.addEventListener('contextmenu', event => { if (sectionSort.card || event.target.closest('[data-section-card]')) event.preventDefault(); });
 $('#sectionTimeGrid').addEventListener('dragstart', event => event.preventDefault());
 $('#exportDataBtn').addEventListener('click', exportData); $('#exportCsvBtn').addEventListener('click', exportRecordsCsv); $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click()); $('#importDataInput').addEventListener('change', e => { importDataFile(e.target.files[0]); e.target.value = ''; });
-$('#cancelRestoreBtn').addEventListener('click', cancelRestoreImport); $('#confirmRestoreBtn').addEventListener('click', confirmRestoreImport);
+$('#cancelRestoreBtn').addEventListener('click', cancelRestoreImport); $('#confirmMergeRestoreBtn').addEventListener('click', () => confirmRestoreImport('merge')); $('#confirmRestoreBtn').addEventListener('click', () => confirmRestoreImport('replace'));
 $('#pipBtn').addEventListener('click',togglePip);
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(error => console.warn('Service Worker 注册失败', error)));

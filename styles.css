@@ -717,6 +717,7 @@ dialog p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
   margin-top: 18px;
   text-align: left;
 }
+#restorePreviewDialog { overflow: auto; }
 .restore-preview-grid span {
   min-width: 0;
   padding: 12px 10px;
@@ -735,6 +736,8 @@ dialog p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
   line-height: 1.6;
   text-align: left;
 }
+.restore-warning strong { color: var(--warning); }
+.restore-actions button { flex: 1; }
 .module-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .module-choice { min-height: 58px; border-color: var(--line); border-radius: 5px; background: transparent; color: var(--text); }
 .module-choice:hover { border-color: var(--accent); background: var(--accent-2); }
@@ -917,6 +920,8 @@ body.dark .mock-report-insights p { background: var(--surface-2); }
   .data-actions { flex-direction: column; }
   .data-actions button { width: 100%; }
   .restore-preview-grid { grid-template-columns: 1fr; }
+  .restore-actions { flex-direction: column; }
+  .restore-actions button { width: 100%; }
   .summary-grid { grid-template-columns: repeat(2, 1fr); }
   .summary-grid article { min-height: 82px; }
   .summary-grid strong { font-size: 15px; }

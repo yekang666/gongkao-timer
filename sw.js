@@ -1,5 +1,6 @@
 const CACHE_PREFIX = 'gongkao-timer-';
 const CACHE_NAME = `${CACHE_PREFIX}v2.8.0`;
+const FRESH_APP_FILES = new Set(['index.html', 'styles.css', 'app.js', 'manifest.webmanifest']);
 const APP_SHELL = [
   './',
   './index.html',
@@ -83,5 +84,6 @@ self.addEventListener('fetch', event => {
     event.respondWith(cachedRange(request));
     return;
   }
-  event.respondWith(request.mode === 'navigate' ? networkFirst(request) : cacheFirst(request));
+  const fileName = url.pathname.split('/').pop();
+  event.respondWith(request.mode === 'navigate' || FRESH_APP_FILES.has(fileName) ? networkFirst(request) : cacheFirst(request));
 });

@@ -71,8 +71,9 @@ button:active:not(:disabled) { transform: translateY(1px); }
   border-bottom-color: var(--line);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  gap: 14px;
 }
-.brand { gap: 11px; }
+.brand { gap: 11px; flex-shrink: 0; }
 .brand-mark {
   width: 34px;
   height: 34px;
@@ -95,7 +96,72 @@ button:active:not(:disabled) { transform: translateY(1px); }
   font-family: Consolas, "SFMono-Regular", monospace;
   font-weight: 600;
 }
-.top-actions { gap: 6px; }
+.exam-countdown {
+  min-width: 250px;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-left: auto;
+}
+.exam-countdown-main {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 1px 10px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.exam-countdown-main span,
+.exam-countdown-main small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.25;
+}
+.exam-countdown-main strong {
+  justify-self: end;
+  color: var(--accent);
+  font-size: 15px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.exam-countdown-main small { grid-column: 1 / -1; }
+.exam-checkin-btn {
+  min-width: 54px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.exam-checkin-btn[aria-pressed="true"] {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+  color: var(--accent);
+}
+.exam-checkin-btn:disabled {
+  border-color: var(--line);
+  background: var(--surface-2);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.exam-countdown.urgent .exam-countdown-main {
+  border-color: color-mix(in srgb, var(--warning) 42%, var(--line));
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface));
+}
+.exam-countdown.urgent .exam-countdown-main strong { color: var(--warning); }
+.exam-countdown.expired .exam-countdown-main strong { color: var(--danger); }
+.top-actions { gap: 6px; flex-shrink: 0; }
 .icon-button {
   width: 34px;
   height: 34px;
@@ -468,6 +534,67 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .setting-row input { accent-color: var(--accent); }
 .setting-block output { color: var(--accent); font-family: Consolas, monospace; font-size: 11px; }
 input[type="range"] { accent-color: var(--accent); }
+.exam-setting-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.exam-setting-preview span {
+  min-width: 0;
+  padding: 10px 9px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-2);
+}
+.exam-setting-preview small,
+.exam-form-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+.exam-setting-preview strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.exam-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 154px;
+  gap: 10px;
+  margin-top: 14px;
+}
+.exam-form-grid label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.exam-form-grid input {
+  width: 100%;
+  margin: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.exam-countdown-note {
+  margin: 11px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.exam-setting-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.exam-setting-actions button { flex: 1; padding: 10px; font-size: 12px; }
 .section-time-grid { gap: 8px; }
 .section-time-card { border-color: var(--line); border-radius: 5px; background: var(--surface); box-shadow: none; }
 .section-time-card:hover { border-color: var(--accent); }
@@ -608,6 +735,9 @@ body.dark {
   --shadow: 0 20px 54px rgba(0, 0, 0, .42);
 }
 body.dark .topbar { background: rgba(21, 32, 25, .92); }
+body.dark .exam-countdown-main { background: var(--surface); }
+body.dark .exam-countdown.urgent .exam-countdown-main { background: #2f281d; }
+body.dark .exam-checkin-btn[aria-pressed="true"] { background: var(--surface-2); color: var(--accent); }
 body.dark::before { background: linear-gradient(90deg, transparent 0, transparent calc(50% - 540px), rgba(86, 183, 130, .08) calc(50% - 540px), rgba(86, 183, 130, .08) calc(50% - 539px), transparent calc(50% - 539px), transparent calc(50% + 539px), rgba(86, 183, 130, .08) calc(50% + 539px), rgba(86, 183, 130, .08) calc(50% + 540px), transparent calc(50% + 540px)); }
 body.dark .timer-stage { background: linear-gradient(90deg, rgba(29, 42, 33, .78), transparent 18%, transparent 82%, rgba(29, 42, 33, .78)); }
 body.dark .pacing-status, body.dark .analytics-note { background: #3d2d1e; color: #f0c590; }
@@ -681,11 +811,15 @@ body.dark .mock-report-insights p { background: var(--surface-2); }
 }
 
 @media (max-width: 640px) {
-  .topbar { height: 62px; padding: 0 16px; }
+  .topbar { height: auto; min-height: 62px; flex-wrap: wrap; gap: 8px 10px; padding: 9px 16px 10px; }
   .brand-mark { width: 31px; height: 31px; font-size: 14px; }
   .brand strong { font-size: 14px; }
   .brand small { display: none; }
   .version-badge { font-size: 9px; }
+  .exam-countdown { order: 3; width: 100%; min-width: 0; margin-left: 0; }
+  .exam-countdown-main { padding: 7px 10px; }
+  .exam-countdown-main strong { font-size: 14px; }
+  .exam-checkin-btn { min-width: 62px; min-height: 42px; }
   .icon-button { width: 31px; height: 31px; font-size: 16px; }
   .workspace { padding: 28px 16px 38px; }
   .mode-tabs { margin-bottom: 30px; }
@@ -719,6 +853,9 @@ body.dark .mock-report-insights p { background: var(--surface-2); }
   .stats-view-tabs button { min-width: 52px; flex: 0 0 auto; font-size: 11px; }
   .settings-view-tabs { top: -22px; margin-left: -18px; margin-right: -18px; padding-left: 18px; padding-right: 18px; gap: 4px; }
   .settings-view-tabs button { padding: 9px 2px; font-size: 11px; }
+  .exam-setting-preview { grid-template-columns: 1fr; }
+  .exam-form-grid { grid-template-columns: 1fr; }
+  .exam-setting-actions { flex-direction: column; }
   .data-health { grid-template-columns: 1fr; }
   .data-actions { flex-direction: column; }
   .data-actions button { width: 100%; }

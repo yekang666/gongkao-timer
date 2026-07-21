@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.5.1';
+const APP_VERSION = 'v2.6.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -34,7 +34,7 @@ const state = {
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
   laps: [], lastLapElapsed: 0, pacingNotified: [], pendingImport: null,
   pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', trendVisual: 'bar', statsView: 'overview', settingsView: 'general', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
-  settings: { sound: true, pacing: true, dark: false, fontSize: 1, warning: 60, ...loadJSON(STORAGE_SETTINGS, {}) }
+  settings: { sound: true, pacing: true, dark: false, fontSize: 1, warning: 60, examCountdown: {}, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
 function loadJSON(key, fallback) {
@@ -290,6 +290,88 @@ function formatAccuracy(correct, questions) {
 function formatScore(score) {
   if (!Number.isFinite(score)) return '暂无';
   return `${Number.isInteger(score) ? score : score.toFixed(1)} 分`;
+}
+function parseDateKey(key) {
+  const match = typeof key === 'string' ? key.match(/^(\d{4})-(\d{2})-(\d{2})$/) : null;
+  if (!match) return null;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+}
+function getTodayKey() { return getDateStamp(new Date()); }
+function normalizeExamCountdown(countdown = {}) {
+  const name = normalizeText(countdown.name, 24) || '公考笔试';
+  const date = parseDateKey(countdown.date) ? countdown.date : '';
+  const checkIns = Array.isArray(countdown.checkIns) ? [...new Set(countdown.checkIns.filter(key => parseDateKey(key)))].sort() : [];
+  return { name, date, checkIns: checkIns.slice(-730) };
+}
+function getExamCountdown() {
+  state.settings.examCountdown = normalizeExamCountdown(state.settings.examCountdown);
+  return state.settings.examCountdown;
+}
+function getExamDaysLeft(dateKey) {
+  const target = parseDateKey(dateKey), today = parseDateKey(getTodayKey());
+  if (!target || !today) return null;
+  return Math.round((target - today) / 86400000);
+}
+function getCheckinStreak(checkIns = getExamCountdown().checkIns) {
+  const checked = new Set(checkIns), cursor = parseDateKey(getTodayKey());
+  let streak = 0;
+  while (cursor && checked.has(getDateStamp(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+function getExamCountdownStatus() {
+  const countdown = getExamCountdown(), today = getTodayKey(), daysLeft = getExamDaysLeft(countdown.date), checkedToday = countdown.checkIns.includes(today), streak = getCheckinStreak(countdown.checkIns);
+  return { countdown, today, daysLeft, checkedToday, streak, hasDate: daysLeft !== null };
+}
+function renderExamCountdown() {
+  const status = getExamCountdownStatus(), { countdown, daysLeft, checkedToday, streak, hasDate } = status;
+  const container = $('#examCountdown'), label = $('#examCountdownLabel'), days = $('#examCountdownDays'), meta = $('#examCountdownMeta'), checkin = $('#examCheckinBtn');
+  if (!container) return;
+  container.classList.toggle('unset', !hasDate);
+  container.classList.toggle('urgent', hasDate && daysLeft >= 0 && daysLeft <= 30);
+  container.classList.toggle('expired', hasDate && daysLeft < 0);
+  label.textContent = hasDate ? `距离 ${countdown.name} 还有` : '考试倒计时';
+  days.textContent = hasDate ? (daysLeft > 0 ? `${daysLeft} 天` : daysLeft === 0 ? '就是今天' : `已过 ${Math.abs(daysLeft)} 天`) : '设置考试日期';
+  meta.textContent = hasDate ? `${checkedToday ? '今日已打卡' : '今日未打卡'} · 连续 ${streak} 天` : '填上目标，开始打卡';
+  checkin.disabled = !hasDate || daysLeft < 0;
+  checkin.textContent = checkedToday ? '已打卡' : '打卡';
+  checkin.setAttribute('aria-pressed', String(checkedToday));
+  syncExamCountdownInputs(status);
+}
+function syncExamCountdownInputs(status = getExamCountdownStatus()) {
+  const { countdown, daysLeft, checkedToday, streak, hasDate } = status;
+  const nameInput = $('#examNameInput'), dateInput = $('#examDateInput');
+  if (nameInput && document.activeElement !== nameInput) nameInput.value = countdown.name === '公考笔试' && !countdown.date ? '' : countdown.name;
+  if (dateInput && document.activeElement !== dateInput) dateInput.value = countdown.date;
+  const summary = $('#examSettingSummary'), checkin = $('#examSettingCheckin'), streakEl = $('#examSettingStreak'), note = $('#examCountdownNote'), settingsBtn = $('#settingsExamCheckinBtn');
+  if (summary) summary.textContent = hasDate ? `${countdown.name} · ${daysLeft > 0 ? `还剩 ${daysLeft} 天` : daysLeft === 0 ? '就是今天' : `已过 ${Math.abs(daysLeft)} 天`}` : '未设置';
+  if (checkin) checkin.textContent = checkedToday ? '今日已打卡' : '今日未打卡';
+  if (streakEl) streakEl.textContent = `${streak} 天`;
+  if (note) note.textContent = hasDate ? `考试日期：${countdown.date}。${daysLeft >= 0 ? '顶部会持续显示倒计时和打卡状态。' : '这场考试日期已过，可以改成下一场目标。'}` : '设置后会出现在顶部，越临近考试提示越明显。';
+  if (settingsBtn) { settingsBtn.disabled = !hasDate || daysLeft < 0; settingsBtn.textContent = checkedToday ? '今日已打卡' : '今日打卡'; }
+}
+function saveExamCountdownSettings() {
+  const nameInput = $('#examNameInput'), dateInput = $('#examDateInput'), existing = getExamCountdown(), name = normalizeText(nameInput.value, 24) || '公考笔试', date = dateInput.value;
+  if (!parseDateKey(date)) { showToast('请选择有效的考试日期', 'warning'); dateInput.focus(); return; }
+  state.settings.examCountdown = normalizeExamCountdown({ ...existing, name, date });
+  saveSettings(); renderExamCountdown(); showToast('考试倒计时已保存');
+}
+function checkInExamCountdown() {
+  const status = getExamCountdownStatus();
+  if (!status.hasDate) { openExamCountdownSettings(); showToast('先设置考试日期', 'warning'); return; }
+  if (status.daysLeft < 0) { openExamCountdownSettings(); showToast('考试日期已过，请设置下一场目标', 'warning'); return; }
+  if (status.checkedToday) { showToast('今天已经打过卡了'); return; }
+  state.settings.examCountdown = normalizeExamCountdown({ ...status.countdown, checkIns: [...status.countdown.checkIns, status.today] });
+  saveSettings(); renderExamCountdown(); showToast('今日已打卡，坚持住');
+}
+function openExamCountdownSettings() {
+  openDrawer($('#settingsDrawer'));
+  setSettingsView('general');
+  setTimeout(() => { ($('#examDateInput')?.value ? $('#examNameInput') : $('#examDateInput'))?.focus(); }, 80);
 }
 function hasAccuracy(record) {
   return toPositiveInt(record.questions) && toNonNegativeInt(record.correct) !== null;
@@ -1256,6 +1338,7 @@ function applySettings() {
   const sizes = ['clamp(4.5rem,9vw,8rem)','clamp(5rem,11vw,9.5rem)','clamp(5.5rem,13vw,11rem)']; document.documentElement.style.setProperty('--timer-size', sizes[state.settings.fontSize]);
   $('#soundToggle').checked = state.settings.sound; $('#pacingToggle').checked = state.settings.pacing !== false; $('#themeToggle').checked = state.settings.dark; $('#fontSizeRange').value = state.settings.fontSize; $('#warningRange').value = state.settings.warning;
   $('#fontSizeOutput').textContent = ['紧凑','标准','特大'][state.settings.fontSize]; $('#warningOutput').textContent = `最后 ${state.settings.warning < 60 ? state.settings.warning + ' 秒' : state.settings.warning / 60 + ' 分钟'}`;
+  renderExamCountdown();
 }
 
 function buildSettingsSnapshot() {
@@ -1268,6 +1351,7 @@ function buildSettingsSnapshot() {
     dark: Boolean(state.settings.dark),
     fontSize: Number.isFinite(Number(state.settings.fontSize)) ? Number(state.settings.fontSize) : 1,
     warning: Number.isFinite(Number(state.settings.warning)) ? Number(state.settings.warning) : 60,
+    examCountdown: normalizeExamCountdown(state.settings.examCountdown),
     sectionOrder,
     customDurations: { ...(state.settings.customDurations || {}), section: sectionDurations }
   };
@@ -1378,6 +1462,7 @@ function normalizeImportedData(data) {
   const warning = Number(importedSettings.warning ?? importedConfiguration.warning ?? mergedSettings.warning);
   mergedSettings.fontSize = [0, 1, 2].includes(fontSize) ? fontSize : 1;
   mergedSettings.warning = Number.isFinite(warning) && warning > 0 ? warning : 60;
+  mergedSettings.examCountdown = normalizeExamCountdown(importedSettings.examCountdown ?? mergedSettings.examCountdown);
   mergedSettings.sectionOrder = normalizeSectionOrder(importedSettings.sectionOrder || importedConfiguration.sectionOrder);
   return { settings: mergedSettings, records: normalizeRecords(importedRecords) };
 }
@@ -1387,12 +1472,14 @@ function buildImportPreview(rawData, normalized, fileName = '') {
   const importedConfiguration = rawData && typeof rawData === 'object' && !Array.isArray(rawData) && rawData.configuration && typeof rawData.configuration === 'object' ? rawData.configuration : {};
   const sectionDurations = importedSettings.customDurations?.section || importedConfiguration.sectionDurations || rawData?.sectionDurations || {};
   const sectionOrder = importedSettings.sectionOrder || importedConfiguration.sectionOrder;
+  const examCountdown = normalizeExamCountdown(importedSettings.examCountdown || {});
   return {
     fileName,
     appVersion: rawData?.appVersion || '未标注',
     exportedAt: rawData?.exportedAt || '',
     recordCount: normalized.records.length,
     hasSettings: Boolean(Object.keys(importedSettings).length || Object.keys(importedConfiguration).length),
+    hasExamCountdown: Boolean(examCountdown.date),
     hasSectionDurations: Boolean(sectionDurations && typeof sectionDurations === 'object' && Object.keys(sectionDurations).length),
     hasSectionOrder: Array.isArray(sectionOrder) && sectionOrder.length > 0
   };
@@ -1405,6 +1492,7 @@ function renderRestorePreview(preview) {
     ['来自版本', preview.appVersion],
     ['训练记录', `${preview.recordCount} 条`],
     ['个人设置', preview.hasSettings ? '包含' : '未发现'],
+    ['考试倒计时', preview.hasExamCountdown ? '包含' : '未设置'],
     ['专项时间', preview.hasSectionDurations ? '包含' : '使用默认'],
     ['答题顺序', preview.hasSectionOrder ? '包含' : '使用默认']
   ];
@@ -1685,6 +1773,8 @@ $$('[data-stats-view]').forEach(button => button.addEventListener('click', () =>
 $$('[data-settings-view]').forEach(button => button.addEventListener('click', () => setSettingsView(button.dataset.settingsView)));
 $('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
+$('#examCountdownOpenBtn').addEventListener('click', openExamCountdownSettings); $('#examCheckinBtn').addEventListener('click', checkInExamCountdown);
+$('#saveExamCountdownBtn').addEventListener('click', saveExamCountdownSettings); $('#settingsExamCheckinBtn').addEventListener('click', checkInExamCountdown);
 $('#saveSectionTimesBtn').addEventListener('click', saveSectionTimes);
 $('#sectionTimeGrid').addEventListener('pointerdown', event => {
   if (event.pointerType === 'touch' || event.button !== 0 || event.target.closest('input,button,a')) return;

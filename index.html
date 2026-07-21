@@ -17,7 +17,15 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><img src="assets/app-icon.png" alt=""></span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.5.1</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.6.0</span></div><small>训练工作台</small></div>
+      </div>
+      <div class="exam-countdown" id="examCountdown">
+        <button class="exam-countdown-main" id="examCountdownOpenBtn" type="button" title="设置考试倒计时">
+          <span id="examCountdownLabel">考试倒计时</span>
+          <strong id="examCountdownDays">设置考试日期</strong>
+          <small id="examCountdownMeta">填上目标，开始打卡</small>
+        </button>
+        <button class="exam-checkin-btn" id="examCheckinBtn" type="button" disabled>打卡</button>
       </div>
       <div class="top-actions">
         <button class="icon-button" id="pipBtn" type="button" title="开启悬浮计时" aria-label="开启悬浮计时">▣</button>
@@ -106,6 +114,7 @@
         <label class="setting-row"><span><strong>深色专注模式</strong><small>降低环境光干扰</small></span><input id="themeToggle" type="checkbox"></label>
         <label class="setting-block"><span><strong>计时数字大小</strong><output id="fontSizeOutput">标准</output></span><input id="fontSizeRange" type="range" min="0" max="2" step="1" value="1"></label>
         <label class="setting-block"><span><strong>倒计时预警</strong><output id="warningOutput">最后 1 分钟</output></span><input id="warningRange" type="range" min="10" max="300" step="10" value="60"></label>
+        <div class="setting-block exam-countdown-settings"><span><strong>考试倒计时日历</strong><small>顶部显示距离目标考试还有多少天，并记录每日打卡。</small></span><div class="exam-setting-preview" aria-label="考试倒计时概览"><span><small>目标考试</small><strong id="examSettingSummary">未设置</strong></span><span><small>今日状态</small><strong id="examSettingCheckin">未打卡</strong></span><span><small>连续打卡</small><strong id="examSettingStreak">0 天</strong></span></div><div class="exam-form-grid"><label><span>考试名称</span><input id="examNameInput" type="text" maxlength="24" placeholder="如：国考笔试"></label><label><span>考试日期</span><input id="examDateInput" type="date"></label></div><p class="exam-countdown-note" id="examCountdownNote">设置后会出现在顶部，越临近考试提示越明显。</p><div class="exam-setting-actions"><button class="primary" id="saveExamCountdownBtn" type="button">保存倒计时</button><button class="secondary" id="settingsExamCheckinBtn" type="button">今日打卡</button></div></div>
       </section>
       <section class="settings-panel hidden" data-settings-panel="pacing">
         <label class="setting-row"><span><strong>模考节奏提醒</strong><small>根据专项时间配置和逐题打点判断是否落后</small></span><input id="pacingToggle" type="checkbox" checked></label>

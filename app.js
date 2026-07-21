@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.9.2';
+const APP_VERSION = 'v2.9.3';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -644,7 +644,9 @@ function beginTimedMeta(result) {
 }
 
 function finalizeTimedSession(questions, papers, correct = null, score = null, meta = {}, moduleResults = []) {
-  const savedRecord = saveSession(questions, papers, correct, score, state.laps, meta, moduleResults); state.status = 'finished'; render(); syncNativeVideoTime(true);
+  const savedRecord = saveSession(questions, papers, correct, score, state.laps, meta, moduleResults);
+  if (!savedRecord) return;
+  resetTimer(false);
   const accuracyText = questions && correct !== null ? `，正确率 ${formatAccuracy(correct, questions)}` : '';
   const scoreText = score !== null ? `，分数 ${formatScore(score)}` : '';
   const reviewedModuleCount = normalizeModuleResults(moduleResults).filter(result => result.correct !== null).length;

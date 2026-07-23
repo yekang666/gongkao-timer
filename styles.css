@@ -587,7 +587,7 @@ button:active:not(:disabled) { transform: translateY(1px); }
   top: -28px;
   z-index: 8;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 5px;
   margin: 18px -28px 0;
   padding: 10px 28px;
@@ -637,6 +637,42 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .setting-row input { accent-color: var(--accent); }
 .setting-block output { color: var(--accent); font-family: Consolas, monospace; font-size: 11px; }
 input[type="range"] { accent-color: var(--accent); }
+.shortcut-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.shortcut-list span {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+.shortcut-list kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  max-width: 72px;
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--accent);
+  font-family: Consolas, "SFMono-Regular", monospace;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+}
+.shortcut-list strong { min-width: 0; color: var(--text); font-size: 12px; }
+.shortcut-note { margin: 12px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .exam-setting-preview {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -880,6 +916,7 @@ body.dark .exam-countdown.urgent .exam-countdown-main { background: #2f281d; }
 body.dark .exam-checkin-btn[aria-pressed="true"] { background: var(--surface-2); color: var(--accent); }
 body.dark .pause-overlay { background: rgba(32, 38, 33, .82); border-color: #6d4e2a; }
 body.dark .timer.paused { color: #728077; }
+body.dark .shortcut-list kbd { background: #111a15; color: #8dd9a8; }
 body.dark::before { background: linear-gradient(90deg, transparent 0, transparent calc(50% - 540px), rgba(86, 183, 130, .08) calc(50% - 540px), rgba(86, 183, 130, .08) calc(50% - 539px), transparent calc(50% - 539px), transparent calc(50% + 539px), rgba(86, 183, 130, .08) calc(50% + 539px), rgba(86, 183, 130, .08) calc(50% + 540px), transparent calc(50% + 540px)); }
 body.dark .timer-stage { background: linear-gradient(90deg, rgba(29, 42, 33, .78), transparent 18%, transparent 82%, rgba(29, 42, 33, .78)); }
 body.dark .pacing-status, body.dark .analytics-note { background: #3d2d1e; color: #f0c590; }
@@ -1001,6 +1038,7 @@ body.dark .mock-report-insights p { background: var(--surface-2); }
   .stats-view-tabs button { min-width: 52px; flex: 0 0 auto; font-size: 11px; }
   .settings-view-tabs { top: -22px; margin-left: -18px; margin-right: -18px; padding-left: 18px; padding-right: 18px; gap: 4px; }
   .settings-view-tabs button { padding: 9px 2px; font-size: 11px; }
+  .shortcut-list { grid-template-columns: 1fr; }
   .exam-setting-preview { grid-template-columns: 1fr; }
   .exam-form-grid { grid-template-columns: 1fr; }
   .exam-setting-actions { flex-direction: column; }

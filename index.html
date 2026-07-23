@@ -20,7 +20,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><img src="assets/app-icon.png" alt=""></span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.9.3</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.10.0</span></div><small>训练工作台</small></div>
       </div>
       <div class="exam-countdown" id="examCountdown">
         <button class="exam-countdown-main" id="examCountdownOpenBtn" type="button" title="设置考试倒计时">
@@ -112,6 +112,7 @@
     <nav class="settings-view-tabs" aria-label="设置分类">
       <button data-settings-view="general" type="button" aria-pressed="true">常用</button>
       <button data-settings-view="pacing" type="button" aria-pressed="false">模考节奏</button>
+      <button data-settings-view="shortcuts" type="button" aria-pressed="false">快捷键</button>
       <button data-settings-view="data" type="button" aria-pressed="false">数据管理</button>
     </nav>
     <div class="settings-list">
@@ -125,6 +126,10 @@
       <section class="settings-panel hidden" data-settings-panel="pacing">
         <label class="setting-row"><span><strong>模考节奏提醒</strong><small>根据专项时间配置和逐题打点判断是否落后</small></span><input id="pacingToggle" type="checkbox" checked></label>
         <div class="setting-block section-time-settings"><span><strong>专项时间与模考节奏</strong><small>时间按比例映射到行测模考；长按卡片后拖动可调整答题顺序</small></span><div class="section-time-grid" id="sectionTimeGrid" aria-label="专项时间和模考顺序"></div><p class="pacing-order-note" id="pacingOrderNote" aria-live="polite"></p><button class="primary" id="saveSectionTimesBtn" type="button">保存专项时间</button></div>
+      </section>
+      <section class="settings-panel hidden" data-settings-panel="shortcuts">
+        <label class="setting-row"><span><strong>全局快捷键</strong><small>页面或 PWA 获得焦点时生效；输入框、下拉框和弹窗中会自动暂停响应。</small></span><input id="shortcutsToggle" type="checkbox" checked></label>
+        <div class="setting-block shortcut-settings"><span><strong>快捷键列表</strong><small>训练时不用移动鼠标，常用操作一键完成。</small></span><div class="shortcut-list" aria-label="全局快捷键列表"><span><kbd>S</kbd><strong>开始 / 暂停 / 继续</strong></span><span><kbd>Space</kbd><strong>完成一题打点</strong></span><span><kbd>F</kbd><strong>结束并进入复盘</strong></span><span><kbd>R</kbd><strong>重置本轮计时</strong></span><span><kbd>U</kbd><strong>撤销上一题打点</strong></span><span><kbd>D</kbd><strong>打开数据复盘</strong></span><span><kbd>G</kbd><strong>打开设置</strong></span><span><kbd>?</kbd><strong>查看快捷键</strong></span></div><p class="shortcut-note">浏览器不允许网页接管系统级热键，所以需要当前网站处于打开并获得焦点。</p></div>
       </section>
       <section class="settings-panel hidden" data-settings-panel="data">
         <div class="setting-block data-tools"><span><strong>备份与恢复</strong><small>备份包含全部设置、专项时间、答题顺序和复盘记录；恢复前会先预览。</small></span><div class="data-health" aria-label="数据体检"><span><small>本机记录</small><strong id="dataRecordCount">0 条</strong></span><span><small>备份范围</small><strong>设置 + 记录</strong></span><span><small>恢复方式</small><strong>先预览</strong></span></div><div class="data-actions"><button class="secondary" id="exportDataBtn" type="button">下载备份文件</button><button class="primary" id="importDataBtn" type="button">恢复备份</button><button class="secondary" id="exportCsvBtn" type="button">导出记录表</button><input class="hidden" id="importDataInput" type="file" accept=".gktimer,.json,application/json"></div></div>

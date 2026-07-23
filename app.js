@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.9.3';
+const APP_VERSION = 'v2.10.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -34,7 +34,7 @@ const state = {
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
   laps: [], lastLapElapsed: 0, pacingNotified: [], pendingImport: null,
   pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, editingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', trendVisual: 'bar', statsView: 'overview', settingsView: 'general', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
-  settings: { sound: true, pacing: true, dark: false, fontSize: 1, warning: 60, examCountdown: {}, ...loadJSON(STORAGE_SETTINGS, {}) }
+  settings: { sound: true, pacing: true, shortcuts: true, dark: false, fontSize: 1, warning: 60, examCountdown: {}, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
 function loadJSON(key, fallback) {
@@ -1411,11 +1411,56 @@ function setStatsView(view, shouldScroll = true) {
 }
 
 function setSettingsView(view, shouldScroll = true) {
-  const views = ['general', 'pacing', 'data'];
+  const views = ['general', 'pacing', 'shortcuts', 'data'];
   state.settingsView = views.includes(view) ? view : 'general';
   $$('[data-settings-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.settingsView === state.settingsView)));
   $$('[data-settings-panel]').forEach(panel => panel.classList.toggle('hidden', panel.dataset.settingsPanel !== state.settingsView));
   if (shouldScroll && $('#settingsDrawer').classList.contains('open')) $('#settingsDrawer').scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function openStatsDrawer() { renderStats(); setStatsView(state.statsView, false); openDrawer($('#statsDrawer')); }
+function openSettingsDrawer(view = state.settingsView) { setSettingsView(view, false); openDrawer($('#settingsDrawer')); }
+
+function isEditableShortcutTarget(target) {
+  return target?.closest?.('input,select,textarea,button,a,[contenteditable="true"]');
+}
+
+function runShortcutAction(action) {
+  switch (action) {
+    case 'toggle': startOrPause(); return '开始 / 暂停';
+    case 'finish': requestFinish(); return state.status === 'idle' ? '' : '结束并复盘';
+    case 'reset': resetTimer(true); return '重置';
+    case 'lap': recordLap(); return '完成一题';
+    case 'undoLap': undoLap(); return '撤销打点';
+    case 'stats': openStatsDrawer(); return '数据复盘';
+    case 'settings': openSettingsDrawer(); return '设置';
+    case 'shortcutHelp': openSettingsDrawer('shortcuts'); return '快捷键说明';
+    default: return '';
+  }
+}
+
+function getShortcutAction(event) {
+  if (event.ctrlKey || event.metaKey || event.altKey) return '';
+  if (event.code === 'Space') return state.status === 'running' ? 'lap' : '';
+  if (event.key === '?' || (event.shiftKey && event.code === 'Slash')) return 'shortcutHelp';
+  const key = event.key.toLowerCase(), code = event.code;
+  if (key === 's' || code === 'KeyS') return 'toggle';
+  if (key === 'f' || code === 'KeyF') return state.status === 'idle' || state.elapsed < 1 ? '' : 'finish';
+  if (key === 'r' || code === 'KeyR') return state.status === 'idle' ? '' : 'reset';
+  if (key === 'u' || code === 'KeyU') return state.laps.length ? 'undoLap' : '';
+  if (key === 'd' || code === 'KeyD') return 'stats';
+  if (key === 'g' || code === 'KeyG') return 'settings';
+  return '';
+}
+
+function handleGlobalShortcut(event) {
+  if (event.repeat || state.settings.shortcuts === false || $('dialog[open]')) return;
+  if (isEditableShortcutTarget(event.target)) return;
+  const action = getShortcutAction(event);
+  if (!action) return;
+  event.preventDefault();
+  const label = runShortcutAction(action);
+  if (label && !['lap', 'undoLap'].includes(action)) showToast('快捷键：' + label);
 }
 
 function recordMatchesHistoryFilter(record, filter) {
@@ -1468,7 +1513,7 @@ function renderStats() {
 function applySettings() {
   document.body.classList.toggle('dark', state.settings.dark);
   const sizes = ['clamp(4.5rem,9vw,8rem)','clamp(5rem,11vw,9.5rem)','clamp(5.5rem,13vw,11rem)']; document.documentElement.style.setProperty('--timer-size', sizes[state.settings.fontSize]);
-  $('#soundToggle').checked = state.settings.sound; $('#pacingToggle').checked = state.settings.pacing !== false; $('#themeToggle').checked = state.settings.dark; $('#fontSizeRange').value = state.settings.fontSize; $('#warningRange').value = state.settings.warning;
+  $('#soundToggle').checked = state.settings.sound; $('#pacingToggle').checked = state.settings.pacing !== false; $('#shortcutsToggle').checked = state.settings.shortcuts !== false; $('#themeToggle').checked = state.settings.dark; $('#fontSizeRange').value = state.settings.fontSize; $('#warningRange').value = state.settings.warning;
   $('#fontSizeOutput').textContent = ['紧凑','标准','特大'][state.settings.fontSize]; $('#warningOutput').textContent = `最后 ${state.settings.warning < 60 ? state.settings.warning + ' 秒' : state.settings.warning / 60 + ' 分钟'}`;
   renderExamCountdown();
 }
@@ -1480,6 +1525,7 @@ function buildSettingsSnapshot() {
     ...state.settings,
     sound: state.settings.sound !== false,
     pacing: state.settings.pacing !== false,
+    shortcuts: state.settings.shortcuts !== false,
     dark: Boolean(state.settings.dark),
     fontSize: Number.isFinite(Number(state.settings.fontSize)) ? Number(state.settings.fontSize) : 1,
     warning: Number.isFinite(Number(state.settings.warning)) ? Number(state.settings.warning) : 60,
@@ -1500,6 +1546,7 @@ function buildExportData() {
     configuration: {
       sound: settings.sound,
       pacing: settings.pacing,
+      shortcuts: settings.shortcuts,
       dark: settings.dark,
       fontSize: settings.fontSize,
       warning: settings.warning,
@@ -1589,6 +1636,7 @@ function normalizeImportedData(data) {
   const mergedSettings = { ...state.settings, ...importedSettings, customDurations };
   mergedSettings.sound = 'sound' in importedConfiguration ? importedConfiguration.sound !== false : mergedSettings.sound !== false;
   mergedSettings.pacing = 'pacing' in importedConfiguration ? importedConfiguration.pacing !== false : mergedSettings.pacing !== false;
+  mergedSettings.shortcuts = 'shortcuts' in importedConfiguration ? importedConfiguration.shortcuts !== false : mergedSettings.shortcuts !== false;
   mergedSettings.dark = 'dark' in importedConfiguration ? Boolean(importedConfiguration.dark) : Boolean(mergedSettings.dark);
   const fontSize = Number(importedSettings.fontSize ?? importedConfiguration.fontSize ?? mergedSettings.fontSize);
   const warning = Number(importedSettings.warning ?? importedConfiguration.warning ?? mergedSettings.warning);
@@ -1915,11 +1963,7 @@ $$('.mode-tab').forEach(tab => tab.addEventListener('click', () => setMode(tab.d
 $('#startBtn').addEventListener('click', startOrPause); $('#resetBtn').addEventListener('click', () => resetTimer(true)); $('#finishBtn').addEventListener('click', requestFinish);
 $('#lapBtn').addEventListener('click', recordLap); $('#undoLapBtn').addEventListener('click', undoLap); $('#timerDisplay').addEventListener('click', recordLap);
 $('#timerDisplay').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); recordLap(); } });
-document.addEventListener('keydown', event => {
-  if (event.code !== 'Space' || event.repeat || state.status !== 'running' || $('dialog[open]')) return;
-  if (event.target.closest('button,input,select,textarea,a,[contenteditable="true"]')) return;
-  event.preventDefault(); recordLap();
-});
+document.addEventListener('keydown', handleGlobalShortcut);
 document.addEventListener('visibilitychange', () => {
   if (state.status === 'running') tick();
 });
@@ -1951,7 +1995,7 @@ $('#trainingMetaDialog').addEventListener('cancel', event => { event.preventDefa
 $('#lapDetailList').addEventListener('click', updateLapReviewFromClick); $('#lapDetailList').addEventListener('input', updateLapReviewNote);
 $('#saveLapReviewBtn').addEventListener('click', saveLapReviews); $('#closeLapDetailBtn').addEventListener('click', closeLapDetail);
 $('#lapDetailDialog').addEventListener('cancel', event => { event.preventDefault(); closeLapDetail(); });
-$('#statsBtn').addEventListener('click',()=>{renderStats();setStatsView(state.statsView,false);openDrawer($('#statsDrawer'))});$('#settingsBtn').addEventListener('click',()=>{setSettingsView(state.settingsView,false);openDrawer($('#settingsDrawer'))});$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
+$('#statsBtn').addEventListener('click', openStatsDrawer);$('#settingsBtn').addEventListener('click',()=>openSettingsDrawer());$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
 $('#historyFilter').addEventListener('change', renderStats);
 $('#historyList').addEventListener('click', openRecordFromHistoryEvent);
@@ -1961,7 +2005,7 @@ $$('[data-trend-metric]').forEach(button => button.addEventListener('click', () 
 $$('[data-trend-visual]').forEach(button => button.addEventListener('click', () => { state.trendVisual = button.dataset.trendVisual; renderStats(); }));
 $$('[data-stats-view]').forEach(button => button.addEventListener('click', () => setStatsView(button.dataset.statsView)));
 $$('[data-settings-view]').forEach(button => button.addEventListener('click', () => setSettingsView(button.dataset.settingsView)));
-$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
+$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#examCountdownOpenBtn').addEventListener('click', openExamCountdownSettings); $('#examCheckinBtn').addEventListener('click', checkInExamCountdown);
 $('#saveExamCountdownBtn').addEventListener('click', saveExamCountdownSettings); $('#settingsExamCheckinBtn').addEventListener('click', checkInExamCountdown);

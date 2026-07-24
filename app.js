@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.12.0';
+const APP_VERSION = 'v2.13.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -444,7 +444,7 @@ function tick(skipPacing = false) {
   else {
     const rawRemaining = state.tickBase.remaining - delta;
     state.remaining = Math.max(0, rawRemaining);
-    if (rawRemaining <= 0 && !state.autoFinished) { state.autoFinished = true; if (state.settings.sound) playBeep(); syncMobilePipSource(true); }
+    if (rawRemaining <= 0 && !state.autoFinished) { state.autoFinished = true; if (state.settings.sound) playBeep(); showTimeUpNotice(); syncMobilePipSource(true); }
   }
   if (!skipPacing) checkMockPacing(); render(); updatePip();
 }
@@ -1772,7 +1772,7 @@ function cancelRestoreImport() {
   $('#restorePreviewDialog').close();
 }
 
-const focusAudio = { ctx: null, source: null, gain: null, nodes: [], playing: false, type: null };
+const focusAudio = { ctx: null, source: null, gain: null, nodes: [], playing: false, type: null, beepAudio: null, beepUrl: "" };
 
 async function ensureAudioContext(showWarning = false) {
   const AudioCtor = window.AudioContext || window.webkitAudioContext;
@@ -1787,16 +1787,22 @@ async function ensureAudioContext(showWarning = false) {
 }
 
 async function unlockAudio(showToastOnSuccess = false) {
-  const ctx = await ensureAudioContext(showToastOnSuccess);
-  if (!ctx || ctx.state !== 'running') return false;
+  let unlocked = false;
+  try { getNativeBeepAudio().load(); unlocked = true; } catch {}
+  const ctx = await ensureAudioContext(false);
+  if (!ctx || ctx.state !== 'running') {
+    if (showToastOnSuccess) showToast(unlocked ? '已准备提示音；如果听不到请检查静音模式和媒体音量' : 'iOS 需要先点测试音来解锁声音', unlocked ? '' : 'warning');
+    return unlocked;
+  }
   try {
     const osc = ctx.createOscillator(), gain = ctx.createGain();
     gain.gain.setValueAtTime(.0001, ctx.currentTime);
     osc.frequency.value = 440; osc.connect(gain); gain.connect(ctx.destination);
     osc.start(ctx.currentTime); osc.stop(ctx.currentTime + .025);
+    unlocked = true;
   } catch {}
-  if (showToastOnSuccess) showToast('声音已解锁，若仍听不到请检查静音模式和媒体音量');
-  return true;
+  if (showToastOnSuccess) showToast('已准备提示音；如果听不到请检查静音模式和媒体音量');
+  return unlocked;
 }
 
 function normalizeFocusSoundSettings(value = state.settings.focusSound) {
@@ -1830,6 +1836,46 @@ function addFocusFilter(ctx, input, filterType, frequency, q = .7) {
   const filter = ctx.createBiquadFilter();
   filter.type = filterType; filter.frequency.value = frequency; filter.Q.value = q;
   input.connect(filter); focusAudio.nodes.push(filter); return filter;
+}
+
+function createBeepWavUrl() {
+  const sampleRate = 44100, duration = 1.35, sampleCount = Math.floor(sampleRate * duration);
+  const buffer = new ArrayBuffer(44 + sampleCount * 2), view = new DataView(buffer);
+  const writeString = (offset, value) => [...value].forEach((char, index) => view.setUint8(offset + index, char.charCodeAt(0)));
+  writeString(0, 'RIFF'); view.setUint32(4, 36 + sampleCount * 2, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, sampleCount * 2, true);
+  for (let i = 0; i < sampleCount; i++) {
+    const t = i / sampleRate, pulse = t < .24 || (t > .42 && t < .66) || (t > .84 && t < 1.12);
+    const edge = Math.min(1, (t % .42) / .035, Math.max(0, (.28 - (t % .42)) / .06));
+    const sample = pulse ? Math.sin(2 * Math.PI * 880 * t) * .82 * edge : 0;
+    view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, sample)) * 32767, true);
+  }
+  return URL.createObjectURL(new Blob([view], { type: 'audio/wav' }));
+}
+
+function getNativeBeepAudio() {
+  if (!focusAudio.beepAudio) {
+    focusAudio.beepUrl = createBeepWavUrl();
+    focusAudio.beepAudio = new Audio(focusAudio.beepUrl);
+    focusAudio.beepAudio.preload = 'auto'; focusAudio.beepAudio.volume = 1;
+  }
+  return focusAudio.beepAudio;
+}
+
+async function playNativeBeep() {
+  try {
+    const audio = getNativeBeepAudio();
+    audio.pause(); audio.currentTime = 0; audio.volume = 1;
+    await audio.play();
+    return true;
+  } catch { return false; }
+}
+
+function showTimeUpNotice() {
+  const stage = $('.timer-stage'); if (!stage) return;
+  stage.classList.remove('time-up-flash'); void stage.offsetWidth; stage.classList.add('time-up-flash');
+  clearTimeout(stage._timeUpTimer); stage._timeUpTimer = setTimeout(() => stage.classList.remove('time-up-flash'), 3600);
 }
 
 async function startFocusSound(persist = true) {
@@ -1917,28 +1963,34 @@ function syncFocusSoundUi() {
 }
 
 async function playBeep(isTest = false) {
+  let played = await playNativeBeep();
   try {
     const ctx = await ensureAudioContext(isTest);
-    if (!ctx || ctx.state !== 'running') return false;
-    [0, .2, .4].forEach(delay => {
+    if (!ctx || ctx.state !== 'running') {
+      if (!played && isTest) showToast('已尝试播放；若无声请关闭静音模式并调高媒体音量', 'warning');
+      return played;
+    }
+    [0, .26, .52].forEach(delay => {
       const o = ctx.createOscillator(), g = ctx.createGain(), start = ctx.currentTime + delay;
-      o.frequency.value = 760;
+      o.frequency.value = 880;
       o.connect(g); g.connect(ctx.destination);
-      g.gain.setValueAtTime(.18, start);
-      g.gain.exponentialRampToValueAtTime(.001, start + .12);
-      o.start(start); o.stop(start + .13);
+      g.gain.setValueAtTime(.001, start);
+      g.gain.linearRampToValueAtTime(.36, start + .02);
+      g.gain.exponentialRampToValueAtTime(.001, start + .22);
+      o.start(start); o.stop(start + .24);
     });
-    return true;
+    played = true;
   } catch {
     if (isTest) showToast('提示音播放失败，请检查浏览器声音权限', 'warning');
-    return false;
   }
+  return played;
 }
 
 async function testSound() {
   await unlockAudio(false);
   const played = await playBeep(true);
-  if (played) showToast('提示音正常。如果 iOS 仍听不到，请检查静音模式和媒体音量');
+  showTimeUpNotice();
+  if (played) showToast('已尝试播放提示音；若没听到，请关闭静音模式并调高媒体音量');
 }
 function stopInterval() { clearInterval(state.interval); state.interval = null; }
 function showToast(message, type = '') { const el=$('#toast'); el.textContent=message;el.classList.toggle('warning-toast',type==='warning');el.classList.remove('hidden');clearTimeout(el._timer);el._timer=setTimeout(()=>{el.classList.add('hidden');el.classList.remove('warning-toast')},type==='warning'?5200:2200); }

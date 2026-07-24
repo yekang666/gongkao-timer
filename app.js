@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.13.0';
+const APP_VERSION = 'v2.14.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -1587,7 +1587,7 @@ function renderDataManagementSummary() {
 function exportData() {
   const blob = new Blob([JSON.stringify(buildExportData(), null, 2)], { type: 'application/json' });
   downloadBlob(blob, `公考计时器完整备份-${getDateStamp()}.gktimer`);
-  showToast('备份文件已下载');
+  showToast('完整备份已下载');
 }
 
 function formatExportDateTime(value) {
@@ -1742,7 +1742,7 @@ async function importDataFile(file) {
   if (!file) return;
   try {
     let rawData;
-    try { rawData = JSON.parse(await file.text()); } catch { throw new Error('文件内容无法读取'); }
+  try { rawData = JSON.parse(await file.text()); } catch { throw new Error('这份备份无法读取'); }
     const normalized = normalizeImportedData(rawData);
     state.pendingImport = normalized;
     renderRestorePreview(buildImportPreview(rawData, normalized, file.name));
@@ -1776,13 +1776,13 @@ const focusAudio = { ctx: null, source: null, gain: null, nodes: [], playing: fa
 
 async function ensureAudioContext(showWarning = false) {
   const AudioCtor = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtor) { if (showWarning) showToast('当前浏览器不支持网页声音', 'warning'); return null; }
+  if (!AudioCtor) { if (showWarning) showToast('当前设备暂时无法播放声音', 'warning'); return null; }
   if (!focusAudio.ctx) {
     try { focusAudio.ctx = new AudioCtor(); }
-    catch { if (showWarning) showToast('浏览器阻止了声音初始化，请先点一下页面再试', 'warning'); return null; }
+    catch { if (showWarning) showToast('声音暂时无法启动，请先点一下页面再试', 'warning'); return null; }
   }
   try { if (focusAudio.ctx.state === 'suspended') await focusAudio.ctx.resume(); } catch {}
-  if (showWarning && focusAudio.ctx.state !== 'running') showToast('iOS 需要先点一下页面或测试音来解锁声音', 'warning');
+  if (showWarning && focusAudio.ctx.state !== 'running') showToast('请先点一下页面，再开启声音', 'warning');
   return focusAudio.ctx;
 }
 
@@ -1791,7 +1791,7 @@ async function unlockAudio(showToastOnSuccess = false) {
   try { getNativeBeepAudio().load(); unlocked = true; } catch {}
   const ctx = await ensureAudioContext(false);
   if (!ctx || ctx.state !== 'running') {
-    if (showToastOnSuccess) showToast(unlocked ? '已准备提示音；如果听不到请检查静音模式和媒体音量' : 'iOS 需要先点测试音来解锁声音', unlocked ? '' : 'warning');
+    if (showToastOnSuccess) showToast(unlocked ? '已准备好提示音；如果听不到，请检查静音开关和媒体音量' : '请先点一下页面，再开启声音', unlocked ? '' : 'warning');
     return unlocked;
   }
   try {
@@ -1801,7 +1801,7 @@ async function unlockAudio(showToastOnSuccess = false) {
     osc.start(ctx.currentTime); osc.stop(ctx.currentTime + .025);
     unlocked = true;
   } catch {}
-  if (showToastOnSuccess) showToast('已准备提示音；如果听不到请检查静音模式和媒体音量');
+  if (showToastOnSuccess) showToast('已准备好提示音；如果听不到，请检查静音开关和媒体音量');
   return unlocked;
 }
 
@@ -1967,7 +1967,7 @@ async function playBeep(isTest = false) {
   try {
     const ctx = await ensureAudioContext(isTest);
     if (!ctx || ctx.state !== 'running') {
-      if (!played && isTest) showToast('已尝试播放；若无声请关闭静音模式并调高媒体音量', 'warning');
+      if (!played && isTest) showToast('声音暂时没有播放出来，请检查静音开关和媒体音量', 'warning');
       return played;
     }
     [0, .26, .52].forEach(delay => {
@@ -1981,16 +1981,9 @@ async function playBeep(isTest = false) {
     });
     played = true;
   } catch {
-    if (isTest) showToast('提示音播放失败，请检查浏览器声音权限', 'warning');
+    if (isTest) showToast('声音暂时无法播放，请检查设备声音设置', 'warning');
   }
   return played;
-}
-
-async function testSound() {
-  await unlockAudio(false);
-  const played = await playBeep(true);
-  showTimeUpNotice();
-  if (played) showToast('已尝试播放提示音；若没听到，请关闭静音模式并调高媒体音量');
 }
 function stopInterval() { clearInterval(state.interval); state.interval = null; }
 function showToast(message, type = '') { const el=$('#toast'); el.textContent=message;el.classList.toggle('warning-toast',type==='warning');el.classList.remove('hidden');clearTimeout(el._timer);el._timer=setTimeout(()=>{el.classList.add('hidden');el.classList.remove('warning-toast')},type==='warning'?5200:2200); }
@@ -2172,7 +2165,7 @@ async function togglePip() {
     }
     await toggleVideoPip();
   } catch {
-    showToast(isAppleMobile() ? '请在系统设置中开启“自动画中画”，并使用 Safari 打开' : '当前浏览器不支持悬浮计时');
+    showToast(isAppleMobile() ? '请在系统设置中开启“自动画中画”，并使用 Safari 打开' : '当前设备暂不支持悬浮计时');
   }
 }
 window.state = state;
@@ -2237,7 +2230,7 @@ $$('[data-trend-metric]').forEach(button => button.addEventListener('click', () 
 $$('[data-trend-visual]').forEach(button => button.addEventListener('click', () => { state.trendVisual = button.dataset.trendVisual; renderStats(); }));
 $$('[data-stats-view]').forEach(button => button.addEventListener('click', () => setStatsView(button.dataset.statsView)));
 $$('[data-settings-view]').forEach(button => button.addEventListener('click', () => setSettingsView(button.dataset.settingsView)));
-$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;if(e.target.checked)unlockAudio(false);saveSettings()});$('#testSoundBtn').addEventListener('click',testSound);$('#focusSoundToggle').addEventListener('change',e=>toggleFocusSound(e.target.checked));$$('[data-focus-sound]').forEach(button=>button.addEventListener('click',()=>setFocusSoundType(button.dataset.focusSound)));$('#focusSoundVolume').addEventListener('input',e=>setFocusSoundVolume(+e.target.value));$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
+$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;if(e.target.checked)unlockAudio(false);saveSettings()});$('#focusSoundToggle').addEventListener('change',e=>toggleFocusSound(e.target.checked));$$('[data-focus-sound]').forEach(button=>button.addEventListener('click',()=>setFocusSoundType(button.dataset.focusSound)));$('#focusSoundVolume').addEventListener('input',e=>setFocusSoundVolume(+e.target.value));$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#examCountdownOpenBtn').addEventListener('click', openExamCountdownSettings); $('#examCheckinBtn').addEventListener('click', checkInExamCountdown);
 $('#saveExamCountdownBtn').addEventListener('click', saveExamCountdownSettings); $('#settingsExamCheckinBtn').addEventListener('click', checkInExamCountdown);

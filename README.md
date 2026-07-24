@@ -4,9 +4,9 @@
 
 项目地址：[yekang666/gongkao-timer](https://github.com/yekang666/gongkao-timer)
 
-在线使用：<https://yekang666.github.io/gongkao-timer/>
+在线使用：[公考刷题计时器](https://gongkao-timer.20041108.xyz)
 
-当前版本：v2.17.0
+当前版本：v2.17.0	
 
 ---
 
@@ -239,7 +239,7 @@
 
 ### 在线使用
 
-打开：<https://yekang666.github.io/gongkao-timer/>
+打开：[公考刷题计时器](https://gongkao-timer.20041108.xyz/)
 
 无需注册，无需登录，打开即可使用。
 

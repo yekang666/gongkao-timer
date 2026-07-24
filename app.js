@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.14.0';
+const APP_VERSION = 'v2.15.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -424,7 +424,7 @@ function setMode(mode) {
 
 function startOrPause() {
   if (state.status === 'running') { pauseTimer(); $('#startBtn').blur(); return; }
-  unlockAudio(false);
+  if (state.settings.sound) unlockAudio(false);
   if (state.status === 'finished') resetTimer(false);
   state.status = 'running'; state.autoFinished = false;
   if (!state.startedAt) state.startedAt = new Date().toISOString();
@@ -1772,7 +1772,7 @@ function cancelRestoreImport() {
   $('#restorePreviewDialog').close();
 }
 
-const focusAudio = { ctx: null, source: null, gain: null, nodes: [], playing: false, type: null, beepAudio: null, beepUrl: "" };
+const focusAudio = { ctx: null, source: null, gain: null, nodes: [], playing: false, type: null, beepAudio: null, beepUrl: "", alertPrimed: false };
 
 async function ensureAudioContext(showWarning = false) {
   const AudioCtor = window.AudioContext || window.webkitAudioContext;
@@ -1787,9 +1787,9 @@ async function ensureAudioContext(showWarning = false) {
 }
 
 async function unlockAudio(showToastOnSuccess = false) {
-  let unlocked = false;
-  try { getNativeBeepAudio().load(); unlocked = true; } catch {}
+  const nativeUnlock = focusAudio.alertPrimed ? Promise.resolve(true) : playNativeBeep({ prime: true });
   const ctx = await ensureAudioContext(false);
+  let unlocked = await nativeUnlock;
   if (!ctx || ctx.state !== 'running') {
     if (showToastOnSuccess) showToast(unlocked ? '已准备好提示音；如果听不到，请检查静音开关和媒体音量' : '请先点一下页面，再开启声音', unlocked ? '' : 'warning');
     return unlocked;
@@ -1798,9 +1798,10 @@ async function unlockAudio(showToastOnSuccess = false) {
     const osc = ctx.createOscillator(), gain = ctx.createGain();
     gain.gain.setValueAtTime(.0001, ctx.currentTime);
     osc.frequency.value = 440; osc.connect(gain); gain.connect(ctx.destination);
-    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + .025);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + (unlocked ? .025 : .08));
     unlocked = true;
   } catch {}
+  focusAudio.alertPrimed = focusAudio.alertPrimed || unlocked;
   if (showToastOnSuccess) showToast('已准备好提示音；如果听不到，请检查静音开关和媒体音量');
   return unlocked;
 }
@@ -1863,11 +1864,14 @@ function getNativeBeepAudio() {
   return focusAudio.beepAudio;
 }
 
-async function playNativeBeep() {
+async function playNativeBeep(options = {}) {
   try {
+    const { prime = false } = options;
     const audio = getNativeBeepAudio();
-    audio.pause(); audio.currentTime = 0; audio.volume = 1;
+    audio.pause(); audio.currentTime = 0; audio.volume = prime ? .18 : 1;
     await audio.play();
+    focusAudio.alertPrimed = true;
+    if (prime) setTimeout(() => { try { audio.pause(); audio.currentTime = 0; audio.volume = 1; } catch {} }, 110);
     return true;
   } catch { return false; }
 }
@@ -2230,7 +2234,7 @@ $$('[data-trend-metric]').forEach(button => button.addEventListener('click', () 
 $$('[data-trend-visual]').forEach(button => button.addEventListener('click', () => { state.trendVisual = button.dataset.trendVisual; renderStats(); }));
 $$('[data-stats-view]').forEach(button => button.addEventListener('click', () => setStatsView(button.dataset.statsView)));
 $$('[data-settings-view]').forEach(button => button.addEventListener('click', () => setSettingsView(button.dataset.settingsView)));
-$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;if(e.target.checked)unlockAudio(false);saveSettings()});$('#focusSoundToggle').addEventListener('change',e=>toggleFocusSound(e.target.checked));$$('[data-focus-sound]').forEach(button=>button.addEventListener('click',()=>setFocusSoundType(button.dataset.focusSound)));$('#focusSoundVolume').addEventListener('input',e=>setFocusSoundVolume(+e.target.value));$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
+$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;if(e.target.checked)unlockAudio(true);saveSettings()});$('#focusSoundToggle').addEventListener('change',e=>toggleFocusSound(e.target.checked));$$('[data-focus-sound]').forEach(button=>button.addEventListener('click',()=>setFocusSoundType(button.dataset.focusSound)));$('#focusSoundVolume').addEventListener('input',e=>setFocusSoundVolume(+e.target.value));$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#examCountdownOpenBtn').addEventListener('click', openExamCountdownSettings); $('#examCheckinBtn').addEventListener('click', checkInExamCountdown);
 $('#saveExamCountdownBtn').addEventListener('click', saveExamCountdownSettings); $('#settingsExamCheckinBtn').addEventListener('click', checkInExamCountdown);

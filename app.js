@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.15.0';
+const APP_VERSION = 'v2.16.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -451,7 +451,7 @@ function tick(skipPacing = false) {
 
 function resetTimer(confirmNeeded = true) {
   if (confirmNeeded && state.elapsed >= 1 && !confirm('确定重置本轮计时吗？未结束的记录不会保存。')) return;
-  stopInterval(); state.remaining = state.duration; state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.autoFinished = false; state.laps = []; state.lastLapElapsed = 0; state.pacingNotified = []; render(); updatePip(); syncMobilePipSource(true);
+  stopInterval(); stopAlertKeepAlive(); state.remaining = state.duration; state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.autoFinished = false; state.laps = []; state.lastLapElapsed = 0; state.pacingNotified = []; render(); updatePip(); syncMobilePipSource(true);
 }
 
 function recordLap() {
@@ -1772,7 +1772,7 @@ function cancelRestoreImport() {
   $('#restorePreviewDialog').close();
 }
 
-const focusAudio = { ctx: null, source: null, gain: null, nodes: [], playing: false, type: null, beepAudio: null, beepUrl: "", alertPrimed: false };
+const focusAudio = { ctx: null, source: null, gain: null, nodes: [], playing: false, type: null, beepAudio: null, beepUrl: "", alertPrimed: false, alertKeepAliveRequested: false, alertSource: null, alertGain: null };
 
 async function ensureAudioContext(showWarning = false) {
   const AudioCtor = window.AudioContext || window.webkitAudioContext;
@@ -1781,12 +1781,14 @@ async function ensureAudioContext(showWarning = false) {
     try { focusAudio.ctx = new AudioCtor(); }
     catch { if (showWarning) showToast('声音暂时无法启动，请先点一下页面再试', 'warning'); return null; }
   }
+  if (focusAudio.alertKeepAliveRequested) startAlertKeepAlive(focusAudio.ctx);
   try { if (focusAudio.ctx.state === 'suspended') await focusAudio.ctx.resume(); } catch {}
   if (showWarning && focusAudio.ctx.state !== 'running') showToast('请先点一下页面，再开启声音', 'warning');
   return focusAudio.ctx;
 }
 
 async function unlockAudio(showToastOnSuccess = false) {
+  focusAudio.alertKeepAliveRequested = true;
   const nativeUnlock = focusAudio.alertPrimed ? Promise.resolve(true) : playNativeBeep({ prime: true });
   const ctx = await ensureAudioContext(false);
   let unlocked = await nativeUnlock;
@@ -1859,7 +1861,7 @@ function getNativeBeepAudio() {
   if (!focusAudio.beepAudio) {
     focusAudio.beepUrl = createBeepWavUrl();
     focusAudio.beepAudio = new Audio(focusAudio.beepUrl);
-    focusAudio.beepAudio.preload = 'auto'; focusAudio.beepAudio.volume = 1;
+    focusAudio.beepAudio.preload = 'auto'; focusAudio.beepAudio.volume = 1; focusAudio.beepAudio.loop = true; focusAudio.beepAudio.playsInline = true;
   }
   return focusAudio.beepAudio;
 }
@@ -1868,12 +1870,45 @@ async function playNativeBeep(options = {}) {
   try {
     const { prime = false } = options;
     const audio = getNativeBeepAudio();
-    audio.pause(); audio.currentTime = 0; audio.volume = prime ? .18 : 1;
-    await audio.play();
+    audio.muted = false;
+    if (prime) {
+      audio.loop = true; audio.volume = .14;
+      if (audio.paused) { try { audio.currentTime = 0; } catch {} await audio.play(); }
+      setTimeout(() => { try { if (focusAudio.alertKeepAliveRequested) audio.volume = .001; } catch {} }, 130);
+    } else {
+      audio.loop = false; audio.volume = 1;
+      try { audio.currentTime = 0; } catch {}
+      if (audio.paused) await audio.play();
+      setTimeout(() => {
+        try {
+          if (focusAudio.alertKeepAliveRequested) { audio.loop = true; audio.volume = .001; audio.play().catch(() => {}); }
+          else { audio.pause(); audio.currentTime = 0; audio.volume = 1; }
+        } catch {}
+      }, 1500);
+    }
     focusAudio.alertPrimed = true;
-    if (prime) setTimeout(() => { try { audio.pause(); audio.currentTime = 0; audio.volume = 1; } catch {} }, 110);
     return true;
   } catch { return false; }
+}
+
+function startAlertKeepAlive(ctx = focusAudio.ctx) {
+  if (!ctx || focusAudio.alertSource) return Boolean(focusAudio.alertSource);
+  try {
+    const source = ctx.createOscillator(), gain = ctx.createGain();
+    source.frequency.setValueAtTime(22, ctx.currentTime);
+    gain.gain.setValueAtTime(.00003, ctx.currentTime);
+    source.connect(gain); gain.connect(ctx.destination); source.start();
+    Object.assign(focusAudio, { alertSource: source, alertGain: gain });
+    return true;
+  } catch { return false; }
+}
+
+function stopAlertKeepAlive() {
+  focusAudio.alertKeepAliveRequested = false;
+  try { focusAudio.alertSource?.stop(); } catch {}
+  [focusAudio.alertSource, focusAudio.alertGain].forEach(node => { try { node?.disconnect?.(); } catch {} });
+  try { focusAudio.beepAudio?.pause(); if (focusAudio.beepAudio) { focusAudio.beepAudio.currentTime = 0; focusAudio.beepAudio.volume = 1; focusAudio.beepAudio.loop = true; } } catch {}
+  Object.assign(focusAudio, { alertSource: null, alertGain: null });
 }
 
 function showTimeUpNotice() {
@@ -1967,7 +2002,9 @@ function syncFocusSoundUi() {
 }
 
 async function playBeep(isTest = false) {
-  let played = await playNativeBeep();
+  focusAudio.alertKeepAliveRequested = true;
+  const nativePlayed = playNativeBeep();
+  let played = false;
   try {
     const ctx = await ensureAudioContext(isTest);
     if (!ctx || ctx.state !== 'running') {
@@ -1987,6 +2024,8 @@ async function playBeep(isTest = false) {
   } catch {
     if (isTest) showToast('声音暂时无法播放，请检查设备声音设置', 'warning');
   }
+  played = await nativePlayed || played;
+  if (played) setTimeout(stopAlertKeepAlive, 2600);
   return played;
 }
 function stopInterval() { clearInterval(state.interval); state.interval = null; }
@@ -2234,7 +2273,7 @@ $$('[data-trend-metric]').forEach(button => button.addEventListener('click', () 
 $$('[data-trend-visual]').forEach(button => button.addEventListener('click', () => { state.trendVisual = button.dataset.trendVisual; renderStats(); }));
 $$('[data-stats-view]').forEach(button => button.addEventListener('click', () => setStatsView(button.dataset.statsView)));
 $$('[data-settings-view]').forEach(button => button.addEventListener('click', () => setSettingsView(button.dataset.settingsView)));
-$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;if(e.target.checked)unlockAudio(true);saveSettings()});$('#focusSoundToggle').addEventListener('change',e=>toggleFocusSound(e.target.checked));$$('[data-focus-sound]').forEach(button=>button.addEventListener('click',()=>setFocusSoundType(button.dataset.focusSound)));$('#focusSoundVolume').addEventListener('input',e=>setFocusSoundVolume(+e.target.value));$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
+$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;if(e.target.checked)unlockAudio(true);else stopAlertKeepAlive();saveSettings()});$('#focusSoundToggle').addEventListener('change',e=>toggleFocusSound(e.target.checked));$$('[data-focus-sound]').forEach(button=>button.addEventListener('click',()=>setFocusSoundType(button.dataset.focusSound)));$('#focusSoundVolume').addEventListener('input',e=>setFocusSoundVolume(+e.target.value));$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#examCountdownOpenBtn').addEventListener('click', openExamCountdownSettings); $('#examCheckinBtn').addEventListener('click', checkInExamCountdown);
 $('#saveExamCountdownBtn').addEventListener('click', saveExamCountdownSettings); $('#settingsExamCheckinBtn').addEventListener('click', checkInExamCountdown);

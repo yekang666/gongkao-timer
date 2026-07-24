@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.10.0';
+const APP_VERSION = 'v2.11.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -27,6 +27,14 @@ const LAP_REVIEW_STATUSES = ['correct', 'wrong', 'skipped'];
 const LAP_ERROR_REASONS = ['知识盲区', '理解偏差', '计算失误', '方法不优', '时间不足'];
 const DEFAULT_SECTION_ORDER = PRESETS.section.map(preset => preset.name);
 const ANALYTICS_COLORS = ['#2e6754', '#c46a20', '#54799a', '#8a6c9b', '#b83b35', '#638467', '#a46d4c', '#467b86', '#7b7791'];
+const FOCUS_SOUND_TYPES = {
+  white: { label: '白噪音', hint: '均匀沙沙声，适合屏蔽细碎干扰' },
+  pink: { label: '粉噪音', hint: '更柔和，适合长时间阅读和刷题' },
+  brown: { label: '棕噪音', hint: '低频更厚，适合深度专注' },
+  rain: { label: '雨声', hint: '细密雨点感，节奏稳定' },
+  waves: { label: '海浪', hint: '缓慢起伏，适合放松进入状态' },
+  cafe: { label: '咖啡馆', hint: '轻微人声氛围，适合不想太安静时' }
+};
 
 const state = {
   mode: 'mock', preset: PRESETS.mock[0], duration: PRESETS.mock[0].seconds,
@@ -34,7 +42,7 @@ const state = {
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
   laps: [], lastLapElapsed: 0, pacingNotified: [], pendingImport: null,
   pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, editingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', trendVisual: 'bar', statsView: 'overview', settingsView: 'general', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
-  settings: { sound: true, pacing: true, shortcuts: true, dark: false, fontSize: 1, warning: 60, examCountdown: {}, ...loadJSON(STORAGE_SETTINGS, {}) }
+  settings: { sound: true, pacing: true, shortcuts: true, focusSound: {}, dark: false, fontSize: 1, warning: 60, examCountdown: {}, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
 function loadJSON(key, fallback) {
@@ -1515,7 +1523,8 @@ function applySettings() {
   const sizes = ['clamp(4.5rem,9vw,8rem)','clamp(5rem,11vw,9.5rem)','clamp(5.5rem,13vw,11rem)']; document.documentElement.style.setProperty('--timer-size', sizes[state.settings.fontSize]);
   $('#soundToggle').checked = state.settings.sound; $('#pacingToggle').checked = state.settings.pacing !== false; $('#shortcutsToggle').checked = state.settings.shortcuts !== false; $('#themeToggle').checked = state.settings.dark; $('#fontSizeRange').value = state.settings.fontSize; $('#warningRange').value = state.settings.warning;
   $('#fontSizeOutput').textContent = ['紧凑','标准','特大'][state.settings.fontSize]; $('#warningOutput').textContent = `最后 ${state.settings.warning < 60 ? state.settings.warning + ' 秒' : state.settings.warning / 60 + ' 分钟'}`;
-  renderExamCountdown();
+  if (!normalizeFocusSoundSettings().enabled && focusAudio.playing) stopFocusSound(false);
+  syncFocusSoundUi(); renderExamCountdown();
 }
 
 function buildSettingsSnapshot() {
@@ -1526,6 +1535,7 @@ function buildSettingsSnapshot() {
     sound: state.settings.sound !== false,
     pacing: state.settings.pacing !== false,
     shortcuts: state.settings.shortcuts !== false,
+    focusSound: normalizeFocusSoundSettings(state.settings.focusSound),
     dark: Boolean(state.settings.dark),
     fontSize: Number.isFinite(Number(state.settings.fontSize)) ? Number(state.settings.fontSize) : 1,
     warning: Number.isFinite(Number(state.settings.warning)) ? Number(state.settings.warning) : 60,
@@ -1547,6 +1557,7 @@ function buildExportData() {
       sound: settings.sound,
       pacing: settings.pacing,
       shortcuts: settings.shortcuts,
+      focusSound: settings.focusSound,
       dark: settings.dark,
       fontSize: settings.fontSize,
       warning: settings.warning,
@@ -1637,6 +1648,7 @@ function normalizeImportedData(data) {
   mergedSettings.sound = 'sound' in importedConfiguration ? importedConfiguration.sound !== false : mergedSettings.sound !== false;
   mergedSettings.pacing = 'pacing' in importedConfiguration ? importedConfiguration.pacing !== false : mergedSettings.pacing !== false;
   mergedSettings.shortcuts = 'shortcuts' in importedConfiguration ? importedConfiguration.shortcuts !== false : mergedSettings.shortcuts !== false;
+  mergedSettings.focusSound = normalizeFocusSoundSettings(importedSettings.focusSound || importedConfiguration.focusSound || mergedSettings.focusSound);
   mergedSettings.dark = 'dark' in importedConfiguration ? Boolean(importedConfiguration.dark) : Boolean(mergedSettings.dark);
   const fontSize = Number(importedSettings.fontSize ?? importedConfiguration.fontSize ?? mergedSettings.fontSize);
   const warning = Number(importedSettings.warning ?? importedConfiguration.warning ?? mergedSettings.warning);
@@ -1757,6 +1769,122 @@ function confirmRestoreImport(mode = 'replace') {
 function cancelRestoreImport() {
   state.pendingImport = null;
   $('#restorePreviewDialog').close();
+}
+
+const focusAudio = { ctx: null, source: null, gain: null, nodes: [], playing: false, type: null };
+
+function normalizeFocusSoundSettings(value = state.settings.focusSound) {
+  const source = value && typeof value === 'object' ? value : {};
+  const type = FOCUS_SOUND_TYPES[source.type] ? source.type : 'pink';
+  const volume = Math.max(0, Math.min(100, Math.round(Number.isFinite(Number(source.volume)) ? Number(source.volume) : 28)));
+  return { enabled: Boolean(source.enabled), type, volume };
+}
+
+function getFocusSoundGainValue(volume = normalizeFocusSoundSettings().volume) {
+  return Math.pow(Math.max(0, Math.min(100, volume)) / 100, 1.8) * 0.28;
+}
+
+function createNoiseBuffer(ctx, type) {
+  const length = Math.max(ctx.sampleRate * 3, 1), buffer = ctx.createBuffer(1, length, ctx.sampleRate), data = buffer.getChannelData(0);
+  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, last = 0;
+  for (let i = 0; i < length; i++) {
+    const white = Math.random() * 2 - 1;
+    if (type === 'pink' || type === 'rain' || type === 'cafe') {
+      b0 = .99886 * b0 + white * .0555179; b1 = .99332 * b1 + white * .0750759; b2 = .969 * b2 + white * .153852;
+      b3 = .8665 * b3 + white * .3104856; b4 = .55 * b4 + white * .5329522; b5 = -.7616 * b5 - white * .016898;
+      data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * .5362) * .11; b6 = white * .115926;
+    } else if (type === 'brown' || type === 'waves') {
+      last = (last + .025 * white) / 1.025; data[i] = last * 3.2;
+    } else data[i] = white * .48;
+  }
+  return buffer;
+}
+
+function addFocusFilter(ctx, input, filterType, frequency, q = .7) {
+  const filter = ctx.createBiquadFilter();
+  filter.type = filterType; filter.frequency.value = frequency; filter.Q.value = q;
+  input.connect(filter); focusAudio.nodes.push(filter); return filter;
+}
+
+async function startFocusSound(persist = true) {
+  const AudioCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtor) { showToast('当前浏览器不支持背景音', 'warning'); return false; }
+  const settings = normalizeFocusSoundSettings({ ...state.settings.focusSound, enabled: true });
+  stopFocusSound(false);
+  const ctx = focusAudio.ctx || new AudioCtor(); focusAudio.ctx = ctx;
+  try { if (ctx.state === 'suspended') await ctx.resume(); } catch {}
+  const source = ctx.createBufferSource(), gain = ctx.createGain();
+  source.buffer = createNoiseBuffer(ctx, settings.type); source.loop = true;
+  let node = source;
+  if (settings.type === 'brown') node = addFocusFilter(ctx, node, 'lowpass', 1400, .6);
+  else if (settings.type === 'rain') { node = addFocusFilter(ctx, node, 'highpass', 850, .55); node = addFocusFilter(ctx, node, 'lowpass', 5200, .8); }
+  else if (settings.type === 'waves') node = addFocusFilter(ctx, node, 'lowpass', 720, .7);
+  else if (settings.type === 'cafe') { node = addFocusFilter(ctx, node, 'bandpass', 900, .65); node = addFocusFilter(ctx, node, 'lowpass', 2600, .75); }
+  else if (settings.type === 'pink') node = addFocusFilter(ctx, node, 'lowpass', 9000, .45);
+  const baseGain = getFocusSoundGainValue(settings.volume);
+  gain.gain.setValueAtTime(baseGain, ctx.currentTime);
+  if (settings.type === 'waves' || settings.type === 'rain' || settings.type === 'cafe') {
+    const lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
+    lfo.frequency.value = settings.type === 'waves' ? .08 : settings.type === 'rain' ? .42 : .18;
+    lfoGain.gain.value = baseGain * (settings.type === 'waves' ? .55 : .18);
+    gain.gain.setValueAtTime(Math.max(.0001, baseGain * (settings.type === 'waves' ? .72 : .9)), ctx.currentTime);
+    lfo.connect(lfoGain); lfoGain.connect(gain.gain); lfo.start(); focusAudio.nodes.push(lfo, lfoGain);
+  }
+  node.connect(gain); gain.connect(ctx.destination); source.start();
+  Object.assign(focusAudio, { source, gain, playing: true, type: settings.type });
+  state.settings.focusSound = settings;
+  if (persist) saveSettings();
+  syncFocusSoundUi();
+  return true;
+}
+
+function stopFocusSound(persist = true) {
+  try { focusAudio.source?.stop(); } catch {}
+  [focusAudio.source, focusAudio.gain, ...focusAudio.nodes].forEach(node => { try { node?.disconnect?.(); } catch {} });
+  Object.assign(focusAudio, { source: null, gain: null, nodes: [], playing: false, type: null });
+  if (persist) { state.settings.focusSound = { ...normalizeFocusSoundSettings(), enabled: false }; saveSettings(); syncFocusSoundUi(); }
+}
+
+function setFocusSoundVolume(volume) {
+  const settings = normalizeFocusSoundSettings({ ...state.settings.focusSound, volume });
+  state.settings.focusSound = settings; saveSettings();
+  if (focusAudio.gain) {
+    const now = focusAudio.ctx.currentTime;
+    focusAudio.gain.gain.cancelScheduledValues(now);
+    focusAudio.gain.gain.setTargetAtTime(getFocusSoundGainValue(settings.volume), now, .08);
+  }
+  syncFocusSoundUi();
+}
+
+function setFocusSoundType(type) {
+  if (!FOCUS_SOUND_TYPES[type]) return;
+  const wasPlaying = focusAudio.playing || normalizeFocusSoundSettings().enabled;
+  state.settings.focusSound = normalizeFocusSoundSettings({ ...state.settings.focusSound, type, enabled: wasPlaying });
+  saveSettings(); syncFocusSoundUi();
+  if (wasPlaying) startFocusSound(false);
+}
+
+function toggleFocusSound(enabled) {
+  if (enabled) startFocusSound(true);
+  else stopFocusSound(true);
+}
+
+function maybeResumeFocusSound() {
+  const settings = normalizeFocusSoundSettings();
+  if (settings.enabled && !focusAudio.playing) startFocusSound(false);
+}
+
+function syncFocusSoundUi() {
+  const settings = normalizeFocusSoundSettings(); state.settings.focusSound = settings;
+  const toggle = $('#focusSoundToggle'), volume = $('#focusSoundVolume'), output = $('#focusSoundOutput'), status = $('#focusSoundStatus');
+  if (toggle) toggle.checked = settings.enabled;
+  if (volume) volume.value = settings.volume;
+  if (output) output.textContent = settings.volume + '%';
+  if (status) status.textContent = focusAudio.playing ? FOCUS_SOUND_TYPES[settings.type].label + '播放中' : (settings.enabled ? '点击页面后恢复播放' : '已关闭');
+  $$('[data-focus-sound]').forEach(button => {
+    const selected = button.dataset.focusSound === settings.type;
+    button.classList.toggle('selected', selected); button.setAttribute('aria-pressed', String(selected));
+  });
 }
 
 function playBeep() { try { const ctx = new AudioContext(); [0,.2,.4].forEach(delay => { const o=ctx.createOscillator(),g=ctx.createGain(); o.frequency.value=760;o.connect(g);g.connect(ctx.destination);g.gain.setValueAtTime(.18,ctx.currentTime+delay);g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+delay+.12);o.start(ctx.currentTime+delay);o.stop(ctx.currentTime+delay+.13); }); } catch {} }
@@ -2005,7 +2133,7 @@ $$('[data-trend-metric]').forEach(button => button.addEventListener('click', () 
 $$('[data-trend-visual]').forEach(button => button.addEventListener('click', () => { state.trendVisual = button.dataset.trendVisual; renderStats(); }));
 $$('[data-stats-view]').forEach(button => button.addEventListener('click', () => setStatsView(button.dataset.statsView)));
 $$('[data-settings-view]').forEach(button => button.addEventListener('click', () => setSettingsView(button.dataset.settingsView)));
-$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
+$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;saveSettings()});$('#focusSoundToggle').addEventListener('change',e=>toggleFocusSound(e.target.checked));$$('[data-focus-sound]').forEach(button=>button.addEventListener('click',()=>setFocusSoundType(button.dataset.focusSound)));$('#focusSoundVolume').addEventListener('input',e=>setFocusSoundVolume(+e.target.value));$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#examCountdownOpenBtn').addEventListener('click', openExamCountdownSettings); $('#examCheckinBtn').addEventListener('click', checkInExamCountdown);
 $('#saveExamCountdownBtn').addEventListener('click', saveExamCountdownSettings); $('#settingsExamCheckinBtn').addEventListener('click', checkInExamCountdown);
@@ -2035,4 +2163,6 @@ $('#pipBtn').addEventListener('click',togglePip);
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(error => console.warn('Service Worker 注册失败', error)));
 }
-window.addEventListener('beforeunload', () => { stopInterval(); stopMobilePipSyncLoop(); }); applyCustomDurations(); applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); renderDataManagementSummary(); render();
+document.addEventListener('pointerdown', maybeResumeFocusSound, { passive: true });
+document.addEventListener('keydown', maybeResumeFocusSound);
+window.addEventListener('beforeunload', () => { stopInterval(); stopMobilePipSyncLoop(); stopFocusSound(false); }); applyCustomDurations(); applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); renderDataManagementSummary(); render();

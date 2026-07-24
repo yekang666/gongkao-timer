@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.16.0';
+const APP_VERSION = 'v2.17.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -2001,7 +2001,8 @@ function syncFocusSoundUi() {
   });
 }
 
-async function playBeep(isTest = false) {
+async function playBeep(isTest = false, options = {}) {
+  const { keepAliveAfter = false } = options;
   focusAudio.alertKeepAliveRequested = true;
   const nativePlayed = playNativeBeep();
   let played = false;
@@ -2025,8 +2026,14 @@ async function playBeep(isTest = false) {
     if (isTest) showToast('声音暂时无法播放，请检查设备声音设置', 'warning');
   }
   played = await nativePlayed || played;
-  if (played) setTimeout(stopAlertKeepAlive, 2600);
+  if (played && !keepAliveAfter) setTimeout(stopAlertKeepAlive, 2600);
   return played;
+}
+
+async function warmUpAlertSound() {
+  await unlockAudio(false);
+  const played = await playBeep(true, { keepAliveAfter: true });
+  if (played) showToast('提示音已预热，训练结束时会响铃');
 }
 function stopInterval() { clearInterval(state.interval); state.interval = null; }
 function showToast(message, type = '') { const el=$('#toast'); el.textContent=message;el.classList.toggle('warning-toast',type==='warning');el.classList.remove('hidden');clearTimeout(el._timer);el._timer=setTimeout(()=>{el.classList.add('hidden');el.classList.remove('warning-toast')},type==='warning'?5200:2200); }
@@ -2273,7 +2280,7 @@ $$('[data-trend-metric]').forEach(button => button.addEventListener('click', () 
 $$('[data-trend-visual]').forEach(button => button.addEventListener('click', () => { state.trendVisual = button.dataset.trendVisual; renderStats(); }));
 $$('[data-stats-view]').forEach(button => button.addEventListener('click', () => setStatsView(button.dataset.statsView)));
 $$('[data-settings-view]').forEach(button => button.addEventListener('click', () => setSettingsView(button.dataset.settingsView)));
-$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;if(e.target.checked)unlockAudio(true);else stopAlertKeepAlive();saveSettings()});$('#focusSoundToggle').addEventListener('change',e=>toggleFocusSound(e.target.checked));$$('[data-focus-sound]').forEach(button=>button.addEventListener('click',()=>setFocusSoundType(button.dataset.focusSound)));$('#focusSoundVolume').addEventListener('input',e=>setFocusSoundVolume(+e.target.value));$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
+$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;if(e.target.checked)unlockAudio(true);else stopAlertKeepAlive();saveSettings()});$('#warmupSoundBtn').addEventListener('click',warmUpAlertSound);$('#focusSoundToggle').addEventListener('change',e=>toggleFocusSound(e.target.checked));$$('[data-focus-sound]').forEach(button=>button.addEventListener('click',()=>setFocusSoundType(button.dataset.focusSound)));$('#focusSoundVolume').addEventListener('input',e=>setFocusSoundVolume(+e.target.value));$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#examCountdownOpenBtn').addEventListener('click', openExamCountdownSettings); $('#examCheckinBtn').addEventListener('click', checkInExamCountdown);
 $('#saveExamCountdownBtn').addEventListener('click', saveExamCountdownSettings); $('#settingsExamCheckinBtn').addEventListener('click', checkInExamCountdown);

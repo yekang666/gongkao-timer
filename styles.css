@@ -666,6 +666,11 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .setting-row small, .setting-block > span > small { color: var(--muted); font-size: 11px; }
 .setting-row input { accent-color: var(--accent); }
 .setting-block output { color: var(--accent); font-family: Consolas, monospace; font-size: 11px; }
+.setting-inline-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.setting-inline-action span { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.setting-inline-action strong { color: var(--text); font-size: 13px; }
+.setting-inline-action small { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.compact-button { min-width: 104px; padding: 8px 12px; font-size: 12px; white-space: nowrap; }
 input[type="range"] { accent-color: var(--accent); }
 .shortcut-list {
   display: grid;
@@ -716,6 +721,7 @@ input[type="range"] { accent-color: var(--accent); }
 .focus-sound-volume { display: grid; grid-template-columns: 1fr auto; gap: 8px 10px; align-items: center; margin-top: 12px; color: var(--text); font-size: 12px; font-weight: 700; }
 .focus-sound-volume input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--accent); }
 .focus-sound-volume output { color: var(--accent); font-family: Consolas, "SFMono-Regular", monospace; font-size: 11px; }
+@media(max-width:640px){.setting-inline-action{align-items:flex-start;flex-direction:column}}
 .exam-setting-preview {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -20,7 +20,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><img src="assets/app-icon.png" alt=""></span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.16.0</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.17.0</span></div><small>训练工作台</small></div>
       </div>
       <div class="exam-countdown" id="examCountdown">
         <button class="exam-countdown-main" id="examCountdownOpenBtn" type="button" title="设置考试倒计时">
@@ -118,6 +118,7 @@
     <div class="settings-list">
       <section class="settings-panel" data-settings-panel="general">
         <label class="setting-row"><span><strong>结束提示音</strong><small>倒计时结束时播放短促音效</small></span><input id="soundToggle" type="checkbox" checked></label>
+        <div class="setting-inline-action"><span><strong>提示音预热</strong><small>开始训练前点一下，确保结束提醒能正常响起。</small></span><button class="secondary compact-button" id="warmupSoundBtn" type="button">预热提示音</button></div>
         <div class="setting-block focus-sound-settings"><span><strong>专注背景音</strong><small>内置白噪音、雨声等环境声，断网时也能播放。</small></span><div class="focus-sound-header"><label><span>播放背景音</span><input id="focusSoundToggle" type="checkbox"></label><strong id="focusSoundStatus">已关闭</strong></div><div class="focus-sound-choices" aria-label="选择背景音"><button data-focus-sound="white" type="button" aria-pressed="false"><strong>白噪音</strong><small>均匀屏蔽干扰</small></button><button data-focus-sound="pink" type="button" aria-pressed="true"><strong>粉噪音</strong><small>柔和长时专注</small></button><button data-focus-sound="brown" type="button" aria-pressed="false"><strong>棕噪音</strong><small>低频更厚实</small></button><button data-focus-sound="rain" type="button" aria-pressed="false"><strong>雨声</strong><small>细密稳定节奏</small></button><button data-focus-sound="waves" type="button" aria-pressed="false"><strong>海浪</strong><small>缓慢起伏放松</small></button><button data-focus-sound="cafe" type="button" aria-pressed="false"><strong>咖啡馆</strong><small>轻微环境氛围</small></button></div><label class="focus-sound-volume"><span>背景音量</span><output id="focusSoundOutput">28%</output><input id="focusSoundVolume" type="range" min="0" max="100" step="1" value="28"></label></div>
         <label class="setting-row"><span><strong>深色专注模式</strong><small>降低环境光干扰</small></span><input id="themeToggle" type="checkbox"></label>
         <label class="setting-block"><span><strong>计时数字大小</strong><output id="fontSizeOutput">标准</output></span><input id="fontSizeRange" type="range" min="0" max="2" step="1" value="1"></label>

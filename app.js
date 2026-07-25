@@ -424,7 +424,6 @@ function setMode(mode) {
 
 function startOrPause() {
   if (state.status === 'running') { pauseTimer(); $('#startBtn').blur(); return; }
-  if (state.settings.sound) unlockAudio(false);
   if (state.status === 'finished') resetTimer(false);
   state.status = 'running'; state.autoFinished = false;
   if (!state.startedAt) state.startedAt = new Date().toISOString();
@@ -2003,7 +2002,6 @@ function syncFocusSoundUi() {
 
 async function playBeep(isTest = false, options = {}) {
   const { keepAliveAfter = false } = options;
-  focusAudio.alertKeepAliveRequested = true;
   const nativePlayed = playNativeBeep();
   let played = false;
   try {
@@ -2280,7 +2278,7 @@ $$('[data-trend-metric]').forEach(button => button.addEventListener('click', () 
 $$('[data-trend-visual]').forEach(button => button.addEventListener('click', () => { state.trendVisual = button.dataset.trendVisual; renderStats(); }));
 $$('[data-stats-view]').forEach(button => button.addEventListener('click', () => setStatsView(button.dataset.statsView)));
 $$('[data-settings-view]').forEach(button => button.addEventListener('click', () => setSettingsView(button.dataset.settingsView)));
-$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;if(e.target.checked)unlockAudio(true);else stopAlertKeepAlive();saveSettings()});$('#warmupSoundBtn').addEventListener('click',warmUpAlertSound);$('#focusSoundToggle').addEventListener('change',e=>toggleFocusSound(e.target.checked));$$('[data-focus-sound]').forEach(button=>button.addEventListener('click',()=>setFocusSoundType(button.dataset.focusSound)));$('#focusSoundVolume').addEventListener('input',e=>setFocusSoundVolume(+e.target.value));$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
+$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;if(!e.target.checked)stopAlertKeepAlive();saveSettings()});$('#warmupSoundBtn').addEventListener('click',warmUpAlertSound);$('#focusSoundToggle').addEventListener('change',e=>toggleFocusSound(e.target.checked));$$('[data-focus-sound]').forEach(button=>button.addEventListener('click',()=>setFocusSoundType(button.dataset.focusSound)));$('#focusSoundVolume').addEventListener('input',e=>setFocusSoundVolume(+e.target.value));$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#examCountdownOpenBtn').addEventListener('click', openExamCountdownSettings); $('#examCheckinBtn').addEventListener('click', checkInExamCountdown);
 $('#saveExamCountdownBtn').addEventListener('click', saveExamCountdownSettings); $('#settingsExamCheckinBtn').addEventListener('click', checkInExamCountdown);

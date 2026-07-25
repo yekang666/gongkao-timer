@@ -16,7 +16,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.17.0';
+const APP_VERSION = 'v2.18.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -556,10 +556,11 @@ function openCorrectInputDialog(questions, options = {}) {
   state.pendingTimed = { step: 'correct', questions, papers: options.papers ?? null, editableQuestions: Boolean(options.editableQuestions), score: Boolean(options.score) };
   $('#dialogTitle').textContent = options.score ? '填写本次分数' : (options.editableQuestions ? '填写本次正确率' : '填写正确数量');
   $('#dialogMessage').textContent = options.score ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入本次得分。` : (options.editableQuestions ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入完成题数和正确数量。` : `本次共 ${questions} 题，请输入做对的题数。`);
-  $('#finishScore').value = '';
-  $('#finishQuestionCount').value = questions ? String(questions) : '';
+  const initial = options.initial || {};
+  $('#finishScore').value = initial.score ?? '';
+  $('#finishQuestionCount').value = initial.questions ?? (questions ? String(questions) : '');
   $('#finishCorrectCount').max = questions ? String(questions) : '';
-  $('#finishCorrectCount').value = questions ? String(questions) : '';
+  $('#finishCorrectCount').value = initial.correct ?? (questions ? String(questions) : '');
   $('#scoreInputWrap').classList.toggle('hidden', !options.score);
   $('#questionInputWrap').classList.toggle('hidden', !options.editableQuestions);
   $('#quantityChoiceWrap').classList.add('hidden'); $('#correctInputWrap').classList.toggle('hidden', options.score);
@@ -585,7 +586,7 @@ function saveTimedCorrectSession() {
   const result = { questions, papers, correct, score };
   $('#finishDialog').close(); resetFinishDialog();
   if (state.pendingTimed.score && state.mode === 'mock' && state.preset.name === '行测模考') { openMockModuleReview(result); return; }
-  state.pendingTimed = null; beginTimedMeta(result);
+  state.pendingTimed = null; beginTimedMeta(result, { kind: 'finish' });
 }
 
 function getMockModuleReviewPlan(laps = state.laps) {
@@ -604,8 +605,9 @@ function getMockModuleReviewPlan(laps = state.laps) {
 }
 
 function openMockModuleReview(result, options = {}) {
-  const editingRecord = options.record || null;
-  state.pendingTimed = { step: 'modules', result, modulePlan: editingRecord ? getMockReportRows(editingRecord) : getMockModuleReviewPlan(), editingRecordId: editingRecord?.id || null };
+  const restored = options.pending || null;
+  const editingRecord = restored?.editingRecordId ? state.records.find(item => item.id === restored.editingRecordId) : (options.record || null);
+  state.pendingTimed = restored || { step: 'modules', result, modulePlan: editingRecord ? getMockReportRows(editingRecord) : getMockModuleReviewPlan(), editingRecordId: editingRecord?.id || null };
   const plan = state.pendingTimed.modulePlan;
   const dotted = plan.filter(item => item.duration !== null).length;
   const editing = Boolean(editingRecord);
@@ -637,18 +639,21 @@ function finishMockModuleReview(skip = false) {
     score = toScore($('#mockModuleScore').value);
     if (score === null) { showToast('分数需在 0 到 100 之间'); $('#mockModuleScore').focus(); return; }
   }
+  const reviewedPlan = pending.modulePlan.map(item => ({ ...item, correct: moduleResults.find(result => result.module === item.module)?.correct ?? item.correct ?? null }));
+  const previous = { kind: 'modules', pending: { ...pending, modulePlan: reviewedPlan, result: { ...pending.result, score, moduleResults } } };
   state.pendingTimed = null; $('#mockModuleDialog').close();
   if (pending.editingRecordId) {
     const record = state.records.find(item => item.id === pending.editingRecordId); if (!record) return;
-    state.pendingMeta = { context: 'mock-edit', recordId: record.id, result: { score, moduleResults }, previousMeta: normalizeTrainingMeta(record) };
-    openTrainingMetaDialog('补充模考资料', state.pendingMeta.previousMeta); return;
+    const previousMeta = pending.result.metaDraft || normalizeTrainingMeta(record);
+    state.pendingMeta = { context: 'mock-edit', recordId: record.id, result: { score, moduleResults }, previousMeta, previous };
+    openTrainingMetaDialog('补充模考资料', state.pendingMeta.previousMeta, true); return;
   }
-  beginTimedMeta({ ...pending.result, score, moduleResults });
+  beginTimedMeta({ ...pending.result, score, moduleResults }, previous);
 }
 
-function beginTimedMeta(result) {
-  state.pendingMeta = { context: 'timed', result };
-  openTrainingMetaDialog(`${state.preset.name} · 训练复盘`);
+function beginTimedMeta(result, previous = null) {
+  state.pendingMeta = { context: 'timed', result, previous };
+  openTrainingMetaDialog(`${state.preset.name} · 训练复盘`, result.metaDraft, Boolean(previous));
 }
 
 function finalizeTimedSession(questions, papers, correct = null, score = null, meta = {}, moduleResults = []) {
@@ -733,8 +738,9 @@ function resetTrainingMetaDialog() {
   $$('#trainingMetaDialog [aria-pressed]').forEach(button => { button.classList.remove('selected'); button.setAttribute('aria-pressed', 'false'); });
 }
 
-function openTrainingMetaDialog(title, initialMeta = null) {
+function openTrainingMetaDialog(title, initialMeta = null, showBack = false) {
   resetTrainingMetaDialog(); $('#trainingMetaTitle').textContent = title;
+  $('#backTrainingMetaBtn').classList.toggle('hidden', !showBack);
   if (initialMeta) {
     $('#trainingSource').value = initialMeta.source || ''; $('#trainingNote').value = initialMeta.note || '';
     const selected = initialMeta.difficulty ? $(`#difficultyChoices [data-difficulty="${initialMeta.difficulty}"]`) : null;
@@ -763,6 +769,34 @@ function finishTrainingMeta(skip = false) {
     const record = state.records.find(item => item.id === pending.recordId); if (!record) return;
     record.score = pending.result.score; record.moduleResults = normalizeModuleResults(pending.result.moduleResults); Object.assign(record, meta, { updatedAt: new Date().toISOString() });
     saveRecords(); renderStats(); showToast('模考报告已更新'); openMockReport(record.id);
+  }
+}
+
+function returnToTrainingPreviousStep() {
+  const pending = state.pendingMeta;
+  if (!pending?.previous) return;
+  const metaDraft = readTrainingMeta(), previous = pending.previous;
+  $('#trainingMetaDialog').close();
+  if (pending.context === 'speed') {
+    state.pendingSpeed.metaDraft = metaDraft;
+    state.pendingMeta = null;
+    resumeSpeedReviewStep();
+    return;
+  }
+  if (pending.context === 'timed') pending.result.metaDraft = metaDraft;
+  if (pending.context === 'mock-edit') pending.previous.pending.result.metaDraft = metaDraft;
+  state.pendingMeta = null;
+  if (previous.kind === 'modules') {
+    openMockModuleReview(previous.pending.result, { pending: previous.pending });
+    return;
+  }
+  if (previous.kind === 'finish') {
+    const result = pending.result;
+    openCorrectInputDialog(result.questions, {
+      papers: result.papers,
+      score: result.score !== null,
+      initial: result
+    });
   }
 }
 
@@ -936,6 +970,7 @@ function updateSpeedDialogStep(step, { title, message, nextLabel = '' }) {
     else indicator.removeAttribute('aria-current');
   });
   $('#nextSpeedStepBtn').textContent = nextLabel;
+  $('#previousSpeedStepBtn').classList.toggle('hidden', step === 'type');
 }
 
 function renderSpeedTypePicker() {
@@ -950,16 +985,17 @@ function renderSpeedTypePicker() {
 
 function selectSpeedType(moduleName) {
   const session = state.pendingSpeed; if (!session) return;
+  const sameModule = session.moduleName === moduleName;
   session.moduleName = moduleName; $('#singleModulePicker').classList.add('hidden');
   if (SPEED_SCORE_TYPES.has(moduleName)) {
     session.step = 'score'; session.questions = session.laps.length || null; session.correct = null; session.papers = 1;
-    configureSpeedStepper(true); $('#speedScore').value = ''; $('#speedScoreWrap').classList.remove('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
+    configureSpeedStepper(true); $('#speedScore').value = sameModule ? (session.score ?? '') : ''; $('#speedScoreWrap').classList.remove('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
     const lapText = session.laps.length ? `已自动记录 ${session.laps.length} 次逐题打点；` : '';
     updateSpeedDialogStep('score', { title: `填写${moduleName}成绩`, message: `${lapText}模考类型只需填写本次得分。`, nextLabel: '下一步：复盘' });
     $('#speedScore').focus(); return;
   }
   const lapCount = session.laps.length; session.step = 'questions'; session.papers = null;
-  configureSpeedStepper(false); $('#speedQuestionCount').value = lapCount ? String(lapCount) : '1'; $('#speedQuestionCount').readOnly = lapCount > 0; $('#speedCountWrap').classList.remove('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
+  configureSpeedStepper(false); $('#speedQuestionCount').value = lapCount ? String(lapCount) : (sameModule ? (session.questions ?? 1) : 1); $('#speedQuestionCount').readOnly = lapCount > 0; $('#speedCountWrap').classList.remove('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
   $('#speedCountLabel').textContent = lapCount ? '逐题打点数量' : '本组题目数量';
   $('#speedCountHint').textContent = lapCount ? `已根据 ${lapCount} 次打点自动填写；如需修改，请取消后撤销打点` : '填写本轮实际完成的题数';
   updateSpeedDialogStep('questions', { title: lapCount ? `已记录 ${lapCount} 题逐题用时` : `${moduleName}做了多少题？`, message: lapCount ? '题量已由逐题打点自动生成。' : '请填写本轮实际完成的题数。', nextLabel: '下一步：填写正确数' });
@@ -978,7 +1014,7 @@ function showSpeedCorrectStep() {
   if (questions < 1) { showToast('请先输入刷题数量'); $('#speedQuestionCount').focus(); return; }
   hideToast();
   state.pendingSpeed.questions = questions; state.pendingSpeed.step = 'correct';
-  $('#speedCorrectCount').max = String(questions); $('#speedCorrectCount').value = ''; $('#speedCorrectCount').placeholder = `0 - ${questions}`;
+  $('#speedCorrectCount').max = String(questions); $('#speedCorrectCount').value = state.pendingSpeed.correct ?? ''; $('#speedCorrectCount').placeholder = `0 - ${questions}`;
   $('#speedCorrectHint').textContent = `请输入 0 到 ${questions}，此处不会默认按全部正确填写`;
   $('#speedCountWrap').classList.add('hidden'); $('#speedCorrectWrap').classList.remove('hidden');
   updateSpeedDialogStep('correct', {
@@ -1005,8 +1041,52 @@ function finishSpeedScoreStep() {
 
 function beginSpeedMeta() {
   const session = state.pendingSpeed; if (!session?.moduleName) return;
-  state.pendingMeta = { context: 'speed', moduleName: session.moduleName };
-  $('#singleModuleDialog').close(); openTrainingMetaDialog(`${session.moduleName} · 训练复盘`);
+  state.pendingMeta = { context: 'speed', moduleName: session.moduleName, previous: { kind: 'speed' } };
+  $('#singleModuleDialog').close(); openTrainingMetaDialog(`${session.moduleName} · 训练复盘`, session.metaDraft, true);
+}
+
+function showSpeedPreviousStep() {
+  const session = state.pendingSpeed; if (!session) return;
+  if (session.step === 'score') {
+    session.score = $('#speedScore').value;
+    session.step = 'type'; $('#speedScoreWrap').classList.add('hidden'); $('#nextSpeedStepBtn').classList.add('hidden');
+    configureSpeedStepper(false); renderSpeedTypePicker();
+    updateSpeedDialogStep('type', { title: '先选择本次刷题类型', message: `本次正计时 ${formatClock(session.duration)}，不同题型将使用对应的保存流程。` });
+    $('#singleModulePicker .module-choice').focus();
+    return;
+  }
+  if (session.step === 'questions') {
+    session.questions = $('#speedQuestionCount').value;
+    session.step = 'type'; $('#speedCountWrap').classList.add('hidden'); $('#nextSpeedStepBtn').classList.add('hidden');
+    renderSpeedTypePicker();
+    updateSpeedDialogStep('type', { title: '先选择本次刷题类型', message: `本次正计时 ${formatClock(session.duration)}，不同题型将使用对应的保存流程。` });
+    $('#singleModulePicker .module-choice').focus();
+    return;
+  }
+  if (session.step === 'correct') {
+    session.correct = $('#speedCorrectCount').value;
+    session.step = 'questions'; $('#speedCorrectWrap').classList.add('hidden'); $('#speedCountWrap').classList.remove('hidden');
+    $('#speedQuestionCount').value = session.questions || 1;
+    updateSpeedDialogStep('questions', { title: `${session.moduleName}做了多少题？`, message: '请填写本轮实际完成的题数。', nextLabel: '下一步：填写正确数' });
+    $('#speedQuestionCount').focus();
+  }
+}
+
+function resumeSpeedReviewStep() {
+  const session = state.pendingSpeed; if (!session) return;
+  const isScore = session.step === 'score';
+  $('#singleModulePicker').classList.add('hidden'); $('#speedCountWrap').classList.toggle('hidden', isScore); $('#speedCorrectWrap').classList.toggle('hidden', true); $('#speedScoreWrap').classList.toggle('hidden', !isScore); $('#nextSpeedStepBtn').classList.remove('hidden');
+  if (isScore) {
+    configureSpeedStepper(true); $('#speedScore').value = session.score ?? '';
+    updateSpeedDialogStep('score', { title: `填写${session.moduleName}成绩`, message: '模考类型只需填写本次得分。', nextLabel: '下一步：复盘' });
+    $('#speedScore').focus();
+  } else {
+    configureSpeedStepper(false); session.step = 'correct'; $('#speedCountWrap').classList.add('hidden'); $('#speedCorrectWrap').classList.remove('hidden');
+    $('#speedCorrectCount').max = String(session.questions || 1); $('#speedCorrectCount').value = session.correct ?? '';
+    updateSpeedDialogStep('correct', { title: '这组做对了多少题？', message: `上一步记录了 ${session.questions || 1} 题。请核对后主动填写正确数量。`, nextLabel: '下一步：复盘' });
+    $('#speedCorrectCount').focus();
+  }
+  $('#singleModuleDialog').showModal();
 }
 
 function finalizeSpeedSession(moduleName, meta = {}) {
@@ -2244,6 +2324,7 @@ $('#confirmFinishBtn').addEventListener('click', confirmFinish);
 $('#cancelFinishBtn').addEventListener('click', () => { state.pendingTimed = null; $('#finishDialog').close(); resetFinishDialog(); render(); syncNativeVideoTime(true); });
 $$('#quantityChoiceWrap [data-quantity]').forEach(button => button.addEventListener('click', () => saveQuantitySession(Number(button.dataset.quantity))));
 $('#cancelSingleModuleBtn').addEventListener('click', cancelSpeedSession);
+$('#previousSpeedStepBtn').addEventListener('click', showSpeedPreviousStep);
 $('#nextSpeedStepBtn').addEventListener('click', showSpeedNextStep);
 $('#singleModuleDialog').addEventListener('cancel', event => { event.preventDefault(); cancelSpeedSession(); });
 $$('#difficultyChoices [data-difficulty]').forEach(button => button.addEventListener('click', () => {
@@ -2255,7 +2336,7 @@ $$('#editRecordDifficultyChoices [data-difficulty]').forEach(button => button.ad
   const willSelect = button.getAttribute('aria-pressed') !== 'true';
   setDifficultyChoice('editRecordDifficultyChoices', willSelect ? button.dataset.difficulty : null);
 }));
-$('#skipTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(true)); $('#confirmTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(false));
+$('#backTrainingMetaBtn').addEventListener('click', returnToTrainingPreviousStep); $('#skipTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(true)); $('#confirmTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(false));
 $('#recordEditForm').addEventListener('submit', event => { event.preventDefault(); saveRecordEditor(); });
 $('#cancelRecordEditBtn').addEventListener('click', closeRecordEditor);
 $('#recordEditDialog').addEventListener('cancel', event => { event.preventDefault(); closeRecordEditor(); });

@@ -16,7 +16,8 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
-const APP_VERSION = 'v2.18.0';
+const STORAGE_SESSION = 'examTimer.activeSession.v1';
+const APP_VERSION = 'v2.19.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -41,7 +42,7 @@ const state = {
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
   laps: [], lastLapElapsed: 0, pacingNotified: [], pendingImport: null,
-  pendingSpeed: null, pendingTimed: null, pendingMeta: null, reviewingRecordId: null, editingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', trendVisual: 'bar', statsView: 'overview', settingsView: 'general', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
+  pendingSpeed: null, pendingTimed: null, pendingMeta: null, pendingMockModuleDraft: null, reviewingRecordId: null, editingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', trendVisual: 'bar', statsView: 'overview', settingsView: 'general', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
   settings: { sound: true, pacing: true, shortcuts: true, focusSound: {}, dark: false, fontSize: 1, warning: 60, examCountdown: {}, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
@@ -111,34 +112,124 @@ function normalizeModuleResults(results) {
 function escapeHTML(value) { const element = document.createElement('span'); element.textContent = String(value ?? ''); return element.innerHTML; }
 function escapeAttribute(value) { return escapeHTML(value).replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
 
+function normalizeRecordId(value, record) {
+  const candidate = String(value ?? '').trim().replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 128);
+  if (/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(candidate)) return candidate;
+  const signature = [record.mode, record.module, record.startedAt, record.endedAt, record.duration, record.questions, record.correct, record.score, record.papers].join('|');
+  let hash = 2166136261;
+  for (let index = 0; index < signature.length; index += 1) {
+    hash ^= signature.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `legacy-${(hash >>> 0).toString(36)}`;
+}
+
+function normalizeTimestamp(value) {
+  if ((typeof value !== 'string' && typeof value !== 'number') || value === '') return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function normalizeDuration(value, { nullable = false } = {}) {
+  const duration = Number(value);
+  if (!Number.isFinite(duration) || duration <= 0 || duration > 24 * 60 * 60) return nullable ? null : 0;
+  return Math.round(duration * 1000) / 1000;
+}
+
 function normalizeRecords(records) {
   if (!Array.isArray(records)) return [];
-  return records.filter(record => record && typeof record === 'object').map(record => {
+  return records.filter(record => record && typeof record === 'object' && !Array.isArray(record)).map(record => {
+    const duration = normalizeDuration(record.duration);
+    const endedAt = normalizeTimestamp(record.endedAt);
+    if (!duration || !endedAt) return null;
+    const mode = ['mock', 'section', 'single'].includes(record.mode) ? record.mode : 'single';
+    const module = normalizeText(record.module, 80) || '未分类';
+    const startedAt = normalizeTimestamp(record.startedAt) || new Date(new Date(endedAt).getTime() - duration * 1000).toISOString();
+    const updatedAt = normalizeTimestamp(record.updatedAt);
     const questions = toPositiveInt(record.questions);
     const correct = toNonNegativeInt(record.correct);
     const score = toScore(record.score);
+    const papers = toPositiveInt(record.papers);
     const laps = normalizeLaps(record.laps);
-    const lapReviews = normalizeLapReviews(record.lapReviews, laps.length);
+    const lapReviews = normalizeLapReviews(record.lapReviews ?? record.reviews, laps.length);
     const moduleResults = normalizeModuleResults(record.moduleResults);
-    const meta = normalizeTrainingMeta(record);
-    const normalizedRecord = { ...record };
-    delete normalizedRecord.overtime;
-    delete normalizedRecord.reasons;
-    return {
-      ...normalizedRecord,
+    const nestedMeta = record.meta && typeof record.meta === 'object' && !Array.isArray(record.meta) ? record.meta : {};
+    const meta = normalizeTrainingMeta({ ...nestedMeta, source: record.source ?? nestedMeta.source, difficulty: record.difficulty ?? nestedMeta.difficulty, note: record.note ?? nestedMeta.note });
+    const normalizedRecord = {
+      id: null,
+      mode,
+      module,
+      duration,
+      planned: normalizeDuration(record.planned, { nullable: true }),
+      startedAt,
+      endedAt,
       questions,
       correct: questions && correct !== null ? Math.min(correct, questions) : null,
       score,
+      papers,
       laps,
       lapReviews,
       moduleResults,
       ...meta
     };
-  });
+    normalizedRecord.id = normalizeRecordId(record.id, normalizedRecord);
+    if (updatedAt) normalizedRecord.updatedAt = updatedAt;
+    return normalizedRecord;
+  }).filter(Boolean);
 }
 
-function saveSettings() { localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(state.settings)); }
-function saveRecords() { localStorage.setItem(STORAGE_RECORDS, JSON.stringify(state.records)); }
+function saveToStorage(key, value, label) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (error) {
+    console.error(`${label}保存失败`, error);
+    showToast(`${label}保存失败，请先导出备份并清理浏览器存储空间`);
+    return false;
+  }
+}
+function saveSettings() { return saveToStorage(STORAGE_SETTINGS, state.settings, '设置'); }
+function saveRecords() { return saveToStorage(STORAGE_RECORDS, state.records, '训练记录'); }
+let lastSessionPersistAt = 0;
+function clearActiveSession() {
+  try { localStorage.removeItem(STORAGE_SESSION); } catch {}
+  lastSessionPersistAt = 0;
+}
+function persistActiveSession(force = false) {
+  if (state.status === 'idle' || state.elapsed < .5) { clearActiveSession(); return true; }
+  const now = Date.now();
+  if (!force && now - lastSessionPersistAt < 4000) return true;
+  const snapshot = {
+    version: 1, savedAt: new Date(now).toISOString(), mode: state.mode, presetName: state.preset.name,
+    duration: state.duration, remaining: state.remaining, elapsed: state.elapsed, status: state.status,
+    startedAt: state.startedAt, autoFinished: state.autoFinished, laps: normalizeLaps(state.laps),
+    lastLapElapsed: state.lastLapElapsed, pacingNotified: [...state.pacingNotified]
+  };
+  lastSessionPersistAt = now;
+  const saved = saveToStorage(STORAGE_SESSION, snapshot, '当前训练');
+  return saved;
+}
+function restoreActiveSession() {
+  const snapshot = loadJSON(STORAGE_SESSION, null);
+  if (!snapshot || typeof snapshot !== 'object' || !['mock', 'section', 'single'].includes(snapshot.mode)) return false;
+  const savedAt = new Date(snapshot.savedAt).getTime(), age = Date.now() - savedAt;
+  if (!Number.isFinite(savedAt) || age < 0 || age > 24 * 60 * 60 * 1000) { clearActiveSession(); return false; }
+  const preset = PRESETS[snapshot.mode].find(item => item.name === snapshot.presetName);
+  const elapsed = Number(snapshot.elapsed), duration = Number(snapshot.duration), remaining = Number(snapshot.remaining);
+  if (!preset || !Number.isFinite(elapsed) || elapsed < .5 || !Number.isFinite(duration) || duration < 0) { clearActiveSession(); return false; }
+  const inactiveSeconds = snapshot.status === 'running' ? Math.min(age / 1000, 6 * 60 * 60) : 0;
+  state.mode = snapshot.mode; state.preset = preset; state.duration = duration;
+  state.elapsed = elapsed + inactiveSeconds;
+  state.remaining = snapshot.mode === 'single' ? 0 : Math.max(0, (Number.isFinite(remaining) ? remaining : duration - elapsed) - inactiveSeconds);
+  state.startedAt = normalizeTimestamp(snapshot.startedAt) || new Date(Date.now() - state.elapsed * 1000).toISOString();
+  state.status = 'paused'; state.tickBase = null; state.interval = null;
+  state.autoFinished = snapshot.mode !== 'single' && (Boolean(snapshot.autoFinished) || state.remaining <= 0);
+  state.laps = normalizeLaps(snapshot.laps); state.lastLapElapsed = Math.min(state.elapsed, Number(snapshot.lastLapElapsed) || state.laps.reduce((sum, value) => sum + value, 0));
+  state.pacingNotified = Array.isArray(snapshot.pacingNotified) ? snapshot.pacingNotified.map(Number).filter(Number.isFinite) : [];
+  $$('.mode-tab').forEach(tab => { const active = tab.dataset.mode === state.mode; tab.classList.toggle('active', active); tab.setAttribute('aria-pressed', String(active)); });
+  persistActiveSession(true);
+  return true;
+}
 function normalizeSectionOrder(order) {
   const requested = Array.isArray(order) ? order.filter((name, index) => DEFAULT_SECTION_ORDER.includes(name) && order.indexOf(name) === index) : [];
   return [...requested, ...DEFAULT_SECTION_ORDER.filter(name => !requested.includes(name))];
@@ -178,8 +269,27 @@ function applyCustomDurations() {
 }
 function renderSectionTimeSettings() {
   const grid = $('#sectionTimeGrid'); if (!grid) return;
-  grid.innerHTML = getOrderedSectionPresets().map(preset => `<div class="section-time-row" data-section-card data-section-name="${preset.name}" title="长按后拖动可调整模考顺序"><span class="section-drag-handle" aria-hidden="true">⠿</span><label><span>${preset.name}</span><input data-section-time="${preset.name}" type="number" min="1" max="300" step="1" value="${Math.round(preset.seconds / 60)}"><em>分钟</em></label></div>`).join('');
+  const presets = getOrderedSectionPresets();
+  grid.innerHTML = presets.map((preset, index) => `<div class="section-time-row" data-section-card data-section-name="${preset.name}" title="长按后拖动可调整模考顺序"><span class="section-drag-handle" aria-hidden="true">⠿</span><label><span>${preset.name}</span><input data-section-time="${preset.name}" type="number" min="1" max="300" step="1" value="${Math.round(preset.seconds / 60)}"><em>分钟</em></label><span class="section-order-actions"><button data-move-section="-1" type="button" aria-label="上移${preset.name}" title="上移"${index === 0 ? ' disabled' : ''}>↑</button><button data-move-section="1" type="button" aria-label="下移${preset.name}" title="下移"${index === presets.length - 1 ? ' disabled' : ''}>↓</button></span></div>`).join('');
   renderPacingOrderNote();
+}
+
+function syncSectionMoveButtons() {
+  const cards = $$('#sectionTimeGrid [data-section-card]');
+  cards.forEach((card, index) => {
+    const up = card.querySelector('[data-move-section="-1"]'), down = card.querySelector('[data-move-section="1"]');
+    if (up) up.disabled = index === 0;
+    if (down) down.disabled = index === cards.length - 1;
+  });
+}
+
+function moveSectionCard(button) {
+  const card = button.closest('[data-section-card]'), direction = Number(button.dataset.moveSection), grid = $('#sectionTimeGrid');
+  const target = direction < 0 ? card?.previousElementSibling : card?.nextElementSibling;
+  if (!card || !target) return;
+  animateSectionGridReflow(() => direction < 0 ? grid.insertBefore(card, target) : grid.insertBefore(target, card));
+  state.settings.sectionOrder = normalizeSectionOrder(getSectionCardOrder()); state.pacingNotified = []; const saved = saveSettings();
+  syncSectionMoveButtons(); renderPresets(); renderPacingOrderNote(saved ? '答题顺序已调整并保存' : '答题顺序已调整，但未能保存'); button.focus();
 }
 function renderPacingOrderNote(message = '') {
   const note = $('#pacingOrderNote'); if (!note) return;
@@ -189,9 +299,9 @@ function saveSectionTimes() {
   const section = {};
   $$('[data-section-time]').forEach(input => { const minutes = Math.max(1, Math.floor(Number(input.value) || 0)); section[input.dataset.sectionTime] = minutes * 60; input.value = minutes; });
   state.settings.customDurations = { ...(state.settings.customDurations || {}), section };
-  applyCustomDurations(); state.pacingNotified = []; saveSettings();
+  applyCustomDurations(); state.pacingNotified = []; const saved = saveSettings();
   if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; resetTimer(false); }
-  renderSectionTimeSettings(); renderPresets(); render(); showToast('专项时间已保存');
+  renderSectionTimeSettings(); renderPresets(); render(); if (saved) showToast('专项时间已保存');
 }
 
 const sectionSort = { card: null, placeholder: null, timer: null, frame: null, active: false, inputType: null, pointerId: null, touchId: null, startX: 0, startY: 0, lastX: 0, lastY: 0, offsetX: 0, offsetY: 0, originalOrder: [] };
@@ -275,8 +385,8 @@ function finishSectionSort(cancelled = false) {
   const order = cancelled ? null : getSectionCardOrder();
   resetSectionSortState();
   if (!order) { renderPacingOrderNote(); return; }
-  state.settings.sectionOrder = normalizeSectionOrder(order); applySectionOrder(); state.pacingNotified = []; saveSettings();
-  renderPresets(); render(); renderPacingOrderNote(); showToast('模考节奏顺序已保存');
+  state.settings.sectionOrder = normalizeSectionOrder(order); applySectionOrder(); state.pacingNotified = []; const saved = saveSettings();
+  renderPresets(); render(); renderPacingOrderNote(); if (saved) showToast('模考节奏顺序已保存');
 }
 function formatClock(total) {
   total = Math.max(0, Math.round(total));
@@ -366,7 +476,7 @@ function saveExamCountdownSettings() {
   const nameInput = $('#examNameInput'), dateInput = $('#examDateInput'), existing = getExamCountdown(), name = normalizeText(nameInput.value, 24) || '公考笔试', date = dateInput.value;
   if (!parseDateKey(date)) { showToast('请选择有效的考试日期', 'warning'); dateInput.focus(); return; }
   state.settings.examCountdown = normalizeExamCountdown({ ...existing, name, date });
-  saveSettings(); renderExamCountdown(); showToast('考试倒计时已保存');
+  const saved = saveSettings(); renderExamCountdown(); if (saved) showToast('考试倒计时已保存');
 }
 function checkInExamCountdown() {
   const status = getExamCountdownStatus();
@@ -374,7 +484,7 @@ function checkInExamCountdown() {
   if (status.daysLeft < 0) { openExamCountdownSettings(); showToast('考试日期已过，请设置下一场目标', 'warning'); return; }
   if (status.checkedToday) { showToast('今天已经打过卡了'); return; }
   state.settings.examCountdown = normalizeExamCountdown({ ...status.countdown, checkIns: [...status.countdown.checkIns, status.today] });
-  saveSettings(); renderExamCountdown(); showToast('今日已打卡，坚持住');
+  const saved = saveSettings(); renderExamCountdown(); if (saved) showToast('今日已打卡，坚持住');
 }
 function openExamCountdownSettings() {
   openDrawer($('#settingsDrawer'));
@@ -408,14 +518,17 @@ function renderPresets() {
 
 function selectPreset(preset) {
   if (state.status === 'running') return;
+  if (state.preset === preset) return;
+  if (state.elapsed >= 1 && !confirm('切换题型会清空当前未保存的计时和打点，确定继续吗？')) return;
   state.preset = preset; state.duration = preset.seconds; resetTimer(false); renderPresets();
 }
 
 function setMode(mode) {
   if (mode === state.mode) return;
+  if (state.elapsed >= 1 && !confirm('切换模式会清空当前未保存的训练，确定继续吗？')) return;
   stopInterval(); state.mode = mode; state.preset = PRESETS[mode][0]; state.duration = state.preset.seconds;
   resetTimer(false);
-  $$('.mode-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
+  $$('.mode-tab').forEach(tab => { const active = tab.dataset.mode === mode; tab.classList.toggle('active', active); tab.setAttribute('aria-pressed', String(active)); });
   $('#timerHint').textContent = mode === 'single'
     ? '每完成一题点击计时数字、打点按钮或按空格，自动记录逐题用时。'
     : mode === 'section' ? '按专项节奏完成，每做完一题可打点记录逐题用时。' : '按正式考试节奏完成，每做完一题可打点记录逐题用时。';
@@ -425,14 +538,14 @@ function setMode(mode) {
 function startOrPause() {
   if (state.status === 'running') { pauseTimer(); $('#startBtn').blur(); return; }
   if (state.status === 'finished') resetTimer(false);
-  state.status = 'running'; state.autoFinished = false;
+  state.status = 'running'; state.autoFinished = false; state.pendingMockModuleDraft = null;
   if (!state.startedAt) state.startedAt = new Date().toISOString();
   state.tickBase = { at: Date.now(), remaining: state.remaining, elapsed: state.elapsed };
-  state.interval = setInterval(tick, 200); tick(); render(); syncNativeVideoTime(true); $('#startBtn').blur();
+  state.interval = setInterval(tick, 200); tick(); persistActiveSession(true); render(); syncNativeVideoTime(true); $('#startBtn').blur();
 }
 
 function pauseTimer() {
-  tick(); stopInterval(); state.status = 'paused'; render(); syncNativeVideoTime(true);
+  tick(); stopInterval(); state.status = 'paused'; persistActiveSession(true); render(); syncNativeVideoTime(true);
 }
 
 function tick(skipPacing = false) {
@@ -445,12 +558,12 @@ function tick(skipPacing = false) {
     state.remaining = Math.max(0, rawRemaining);
     if (rawRemaining <= 0 && !state.autoFinished) { state.autoFinished = true; if (state.settings.sound) playBeep(); showTimeUpNotice(); syncMobilePipSource(true); }
   }
-  if (!skipPacing) checkMockPacing(); render(); updatePip();
+  if (!skipPacing) checkMockPacing(); persistActiveSession(); render(); updatePip();
 }
 
 function resetTimer(confirmNeeded = true) {
   if (confirmNeeded && state.elapsed >= 1 && !confirm('确定重置本轮计时吗？未结束的记录不会保存。')) return;
-  stopInterval(); stopAlertKeepAlive(); state.remaining = state.duration; state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.autoFinished = false; state.laps = []; state.lastLapElapsed = 0; state.pacingNotified = []; render(); updatePip(); syncMobilePipSource(true);
+  stopInterval(); stopAlertKeepAlive(); clearActiveSession(); state.remaining = state.duration; state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.autoFinished = false; state.laps = []; state.lastLapElapsed = 0; state.pacingNotified = []; state.pendingMockModuleDraft = null; render(); updatePip(); syncMobilePipSource(true);
 }
 
 function recordLap() {
@@ -463,13 +576,13 @@ function recordLap() {
   const number = state.laps.length;
   $('#lapBtn').classList.remove('lap-pulse'); requestAnimationFrame(() => $('#lapBtn').classList.add('lap-pulse'));
   if (navigator.vibrate) navigator.vibrate(25);
-  render(); showToast(`第 ${number} 题已打点 · ${formatClock(lapDuration).slice(3)}`);
+  persistActiveSession(true); render(); showToast(`第 ${number} 题已打点 · ${formatClock(lapDuration).slice(3)}`);
 }
 
 function undoLap() {
   if (!state.laps.length) return;
   const removed = state.laps.pop(); state.lastLapElapsed = state.laps.reduce((sum, value) => sum + value, 0);
-  render(); $('#undoLapBtn').blur(); showToast(`已撤销上一题（${formatClock(removed).slice(3)}）`);
+  persistActiveSession(true); render(); $('#undoLapBtn').blur(); showToast(`已撤销上一题（${formatClock(removed).slice(3)}）`);
 }
 
 function renderLapPanel() {
@@ -528,11 +641,12 @@ function renderPacingStatus() {
 function requestFinish() {
   if (state.elapsed < 1) return;
   if (state.mode === 'single') { finishSpeedSession(); return; }
+  const endedAt = new Date().toISOString();
   pauseTimer();
   const lapQuestions = state.laps.length || null;
-  if (state.mode === 'mock') { openCorrectInputDialog(lapQuestions, { papers: 1, score: true }); return; }
-  if (state.preset.name === '数量关系' && !lapQuestions) { openQuantityChoiceDialog(); return; }
-  openCorrectInputDialog(lapQuestions || SECTION_QUESTION_COUNTS[state.preset.name] || null);
+  if (state.mode === 'mock') { openCorrectInputDialog(lapQuestions, { papers: 1, score: true, endedAt }); return; }
+  if (state.preset.name === '数量关系' && !lapQuestions) { openQuantityChoiceDialog(endedAt); return; }
+  openCorrectInputDialog(lapQuestions || SECTION_QUESTION_COUNTS[state.preset.name] || null, { endedAt });
 }
 
 function confirmFinish() {
@@ -540,7 +654,8 @@ function confirmFinish() {
   if (state.pendingTimed?.step === 'correct') saveTimedCorrectSession();
 }
 
-function openQuantityChoiceDialog() {
+function openQuantityChoiceDialog(endedAt = new Date().toISOString()) {
+  state.pendingTimed = { step: 'quantity', endedAt };
   $('#dialogTitle').textContent = '选择数量关系题量';
   $('#dialogMessage').textContent = `本次训练 ${formatDuration(state.elapsed)}，请选择本组数量关系题量。`;
   $('#scoreInputWrap').classList.add('hidden'); $('#questionInputWrap').classList.add('hidden'); $('#correctInputWrap').classList.add('hidden'); $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.add('hidden');
@@ -548,12 +663,13 @@ function openQuantityChoiceDialog() {
 }
 
 function saveQuantitySession(questions) {
-  $('#finishDialog').close(); resetFinishDialog(); openCorrectInputDialog(questions);
+  const endedAt = state.pendingTimed?.endedAt;
+  $('#finishDialog').close(); resetFinishDialog(); openCorrectInputDialog(questions, { endedAt });
 }
 
 function openCorrectInputDialog(questions, options = {}) {
-  if (!questions && !options.editableQuestions && !options.score) { beginTimedMeta({ questions: null, papers: null, correct: null, score: null }); return; }
-  state.pendingTimed = { step: 'correct', questions, papers: options.papers ?? null, editableQuestions: Boolean(options.editableQuestions), score: Boolean(options.score) };
+  if (!questions && !options.editableQuestions && !options.score) { beginTimedMeta({ questions: null, papers: null, correct: null, score: null, endedAt: options.endedAt || new Date().toISOString() }); return; }
+  state.pendingTimed = { step: 'correct', questions, papers: options.papers ?? null, editableQuestions: Boolean(options.editableQuestions), score: Boolean(options.score), endedAt: options.endedAt || options.initial?.endedAt || new Date().toISOString(), metaDraft: options.initial?.metaDraft || null };
   $('#dialogTitle').textContent = options.score ? '填写本次分数' : (options.editableQuestions ? '填写本次正确率' : '填写正确数量');
   $('#dialogMessage').textContent = options.score ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入本次得分。` : (options.editableQuestions ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入完成题数和正确数量。` : `本次共 ${questions} 题，请输入做对的题数。`);
   const initial = options.initial || {};
@@ -583,9 +699,14 @@ function saveTimedCorrectSession() {
   const correct = state.pendingTimed.score ? null : toNonNegativeInt($('#finishCorrectCount').value);
   if (!state.pendingTimed.score && (correct === null || correct > questions)) { showToast(`正确数量需在 0 到 ${questions} 之间`); $('#finishCorrectCount').focus(); return; }
   const papers = state.pendingTimed.papers;
-  const result = { questions, papers, correct, score };
+  const result = { questions, papers, correct, score, endedAt: state.pendingTimed.endedAt, metaDraft: state.pendingTimed.metaDraft };
   $('#finishDialog').close(); resetFinishDialog();
-  if (state.pendingTimed.score && state.mode === 'mock' && state.preset.name === '行测模考') { openMockModuleReview(result); return; }
+  if (state.pendingTimed.score && state.mode === 'mock' && state.preset.name === '行测模考') {
+    const restored = state.pendingMockModuleDraft;
+    if (restored) { restored.result = { ...restored.result, ...result }; openMockModuleReview(restored.result, { pending: restored }); }
+    else openMockModuleReview(result);
+    return;
+  }
   state.pendingTimed = null; beginTimedMeta(result, { kind: 'finish' });
 }
 
@@ -607,13 +728,13 @@ function getMockModuleReviewPlan(laps = state.laps) {
 function openMockModuleReview(result, options = {}) {
   const restored = options.pending || null;
   const editingRecord = restored?.editingRecordId ? state.records.find(item => item.id === restored.editingRecordId) : (options.record || null);
-  state.pendingTimed = restored || { step: 'modules', result, modulePlan: editingRecord ? getMockReportRows(editingRecord) : getMockModuleReviewPlan(), editingRecordId: editingRecord?.id || null };
+  state.pendingTimed = restored || { step: 'modules', result, modulePlan: result.modulePlanDraft || (editingRecord ? getMockReportRows(editingRecord) : getMockModuleReviewPlan()), editingRecordId: editingRecord?.id || null };
   const plan = state.pendingTimed.modulePlan;
   const dotted = plan.filter(item => item.duration !== null).length;
   const editing = Boolean(editingRecord);
   $('#mockModuleTitle').textContent = editing ? '修正模考模块数据' : '各模块做对多少题？';
   $('#mockModuleMessage').textContent = editing ? '修改后的正确数、总分和训练信息将更新原训练记录，并重新计算统计。' : '题量和时间目标取自当前专项配置。可只填写已核对的模块，完成逐题打点的模块会同时记录实际用时。';
-  $('#mockModuleScoreWrap').classList.toggle('hidden', !editing); $('#mockModuleScore').value = editing && toScore(editingRecord.score) !== null ? String(toScore(editingRecord.score)) : '';
+  $('#mockModuleScoreWrap').classList.toggle('hidden', !editing); $('#mockModuleScore').value = editing && toScore(state.pendingTimed.result.score) !== null ? String(toScore(state.pendingTimed.result.score)) : '';
   $('#mockModuleSummary').innerHTML = `<span>${editing ? '当前总分' : '总分'} <strong>${formatScore(result.score)}</strong></span><span>已完整打点 <strong>${dotted}/${plan.length} 个模块</strong></span>`;
   $('#mockModuleList').innerHTML = plan.map(item => {
     const timing = item.duration === null ? `目标 ${formatShortClock(item.planned)} · 未完整打点` : `实际 ${formatShortClock(item.duration)} / 目标 ${formatShortClock(item.planned)}`;
@@ -651,13 +772,26 @@ function finishMockModuleReview(skip = false) {
   beginTimedMeta({ ...pending.result, score, moduleResults }, previous);
 }
 
+function returnFromMockModuleReview() {
+  const pending = state.pendingTimed;
+  if (!pending || pending.step !== 'modules') return;
+  if (pending.editingRecordId) {
+    const recordId = pending.editingRecordId;
+    state.pendingTimed = null; $('#mockModuleDialog').close(); openMockReport(recordId); return;
+  }
+  const modulePlan = pending.modulePlan.map(item => ({ ...item, correct: toNonNegativeInt($(`[data-mock-module-correct="${item.module}"]`)?.value) }));
+  state.pendingMockModuleDraft = { ...pending, modulePlan, result: { ...pending.result, modulePlanDraft: modulePlan } };
+  state.pendingTimed = null; $('#mockModuleDialog').close();
+  openCorrectInputDialog(pending.result.questions, { papers: pending.result.papers, score: true, endedAt: pending.result.endedAt, initial: pending.result });
+}
+
 function beginTimedMeta(result, previous = null) {
   state.pendingMeta = { context: 'timed', result, previous };
   openTrainingMetaDialog(`${state.preset.name} · 训练复盘`, result.metaDraft, Boolean(previous));
 }
 
-function finalizeTimedSession(questions, papers, correct = null, score = null, meta = {}, moduleResults = []) {
-  const savedRecord = saveSession(questions, papers, correct, score, state.laps, meta, moduleResults);
+function finalizeTimedSession(questions, papers, correct = null, score = null, meta = {}, moduleResults = [], endedAt = new Date().toISOString()) {
+  const savedRecord = saveSession(questions, papers, correct, score, state.laps, meta, moduleResults, endedAt);
   if (!savedRecord) return;
   resetTimer(false);
   const accuracyText = questions && correct !== null ? `，正确率 ${formatAccuracy(correct, questions)}` : '';
@@ -762,13 +896,15 @@ function finishTrainingMeta(skip = false) {
   const meta = skip ? (pending.context === 'mock-edit' ? pending.previousMeta : normalizeTrainingMeta()) : readTrainingMeta();
   state.pendingMeta = null; $('#trainingMetaDialog').close();
   if (pending.context === 'timed') {
-    const { questions, papers, correct, score, moduleResults = [] } = pending.result;
-    finalizeTimedSession(questions, papers, correct, score, meta, moduleResults);
+    const { questions, papers, correct, score, moduleResults = [], endedAt } = pending.result;
+    finalizeTimedSession(questions, papers, correct, score, meta, moduleResults, endedAt);
   } else if (pending.context === 'speed') finalizeSpeedSession(pending.moduleName, meta);
   else if (pending.context === 'mock-edit') {
     const record = state.records.find(item => item.id === pending.recordId); if (!record) return;
+    const previousRecord = { ...record, moduleResults: [...record.moduleResults] };
     record.score = pending.result.score; record.moduleResults = normalizeModuleResults(pending.result.moduleResults); Object.assign(record, meta, { updatedAt: new Date().toISOString() });
-    saveRecords(); renderStats(); showToast('模考报告已更新'); openMockReport(record.id);
+    if (!saveRecords()) { Object.assign(record, previousRecord); return; }
+    renderStats(); showToast('模考报告已更新'); openMockReport(record.id);
   }
 }
 
@@ -883,6 +1019,11 @@ function saveRecordEditor() {
   const papersRaw = $('#editRecordPapers').value.trim();
   const papers = papersRaw ? toPositiveInt(papersRaw) : null;
   if (papersRaw && papers === null) { showToast('套数需要大于 0'); $('#editRecordPapers').focus(); return; }
+  const laps = normalizeLaps(record.laps), lapTotal = laps.reduce((sum, value) => sum + value, 0);
+  if (laps.length && questions !== null && questions !== laps.length) { showToast(`题量需与 ${laps.length} 次逐题打点一致`); $('#editRecordQuestions').focus(); return; }
+  if (lapTotal > duration) { showToast('总用时不能短于逐题打点用时之和'); $('#editRecordMinutes').focus(); return; }
+  const moduleDuration = normalizeModuleResults(record.moduleResults).reduce((sum, item) => sum + (item.duration || 0), 0);
+  if (moduleDuration > duration) { showToast('总用时不能短于各模块用时之和'); $('#editRecordMinutes').focus(); return; }
   const endedDate = new Date(endedAt);
   const nextRecord = normalizeRecords([{
     ...record,
@@ -900,9 +1041,10 @@ function saveRecordEditor() {
     moduleResults: moduleName === '行测模考' ? record.moduleResults : [],
     updatedAt: new Date().toISOString()
   }])[0];
+  const previousRecords = [...state.records];
   state.records[index] = nextRecord;
   state.records.sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt));
-  saveRecords();
+  if (!saveRecords()) { state.records = previousRecords; return; }
   renderStats();
   closeRecordEditor();
   showToast('训练记录已更新');
@@ -931,7 +1073,7 @@ function openRecordFromHistoryKey(event) {
 function finishSpeedSession() {
   tick(); if (state.elapsed < .5) return;
   state.pendingSpeed = { duration: Math.round(state.elapsed), startedAt: state.startedAt, endedAt: new Date().toISOString(), laps: normalizeLaps(state.laps) };
-  stopInterval(); state.status = 'paused'; render(); syncNativeVideoTime(true); openSpeedSaveDialog();
+  stopInterval(); state.status = 'paused'; persistActiveSession(true); render(); syncNativeVideoTime(true); openSpeedSaveDialog();
 }
 
 function openSpeedSaveDialog() {
@@ -986,6 +1128,7 @@ function renderSpeedTypePicker() {
 function selectSpeedType(moduleName) {
   const session = state.pendingSpeed; if (!session) return;
   const sameModule = session.moduleName === moduleName;
+  if (!sameModule) { session.questions = null; session.correct = null; session.score = null; session.papers = null; }
   session.moduleName = moduleName; $('#singleModulePicker').classList.add('hidden');
   if (SPEED_SCORE_TYPES.has(moduleName)) {
     session.step = 'score'; session.questions = session.laps.length || null; session.correct = null; session.papers = 1;
@@ -1093,11 +1236,13 @@ function finalizeSpeedSession(moduleName, meta = {}) {
   const session = state.pendingSpeed; if (!session) return;
   const questions = session.questions || null, correct = session.correct ?? null, score = toScore(session.score), papers = session.papers ?? null;
   const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, questions, papers, correct, score, laps: session.laps, lapReviews: [], ...normalizeTrainingMeta(meta) };
+  const previousRecords = [...state.records];
   state.records.unshift(savedRecord);
   state.records = state.records.slice(0, 500);
+  if (!saveRecords()) { state.records = previousRecords; return; }
   const resultText = score !== null ? `分数 ${formatScore(score)}` : `${questions} 题，正确率 ${formatAccuracy(correct, questions)}`;
   const paceText = questions ? `，均时 ${formatClock(session.duration / questions).slice(3)}` : '';
-  state.pendingSpeed = null; saveRecords(); $('#singleModuleDialog').close(); resetSpeedSaveDialog(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.laps = []; state.lastLapElapsed = 0; renderStats(); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${resultText}${paceText}`);
+  state.pendingSpeed = null; clearActiveSession(); $('#singleModuleDialog').close(); resetSpeedSaveDialog(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.laps = []; state.lastLapElapsed = 0; renderStats(); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${resultText}${paceText}`);
   if (savedRecord.laps.length) openLapDetail(savedRecord.id);
 }
 
@@ -1115,11 +1260,14 @@ function getDefaultQuestionCount() {
   return state.mode === 'section' ? (SECTION_QUESTION_COUNTS[state.preset.name] || null) : null;
 }
 
-function saveSession(questions, papers = null, correct = null, score = null, laps = [], meta = {}, moduleResults = []) {
+function saveSession(questions, papers = null, correct = null, score = null, laps = [], meta = {}, moduleResults = [], endedAt = new Date().toISOString()) {
   if (state.elapsed < 1) return null;
-  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt: new Date().toISOString(), questions, papers, correct, score, laps: normalizeLaps(laps), lapReviews: [], moduleResults: normalizeModuleResults(moduleResults), ...normalizeTrainingMeta(meta) };
+  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt, questions, papers, correct, score, laps: normalizeLaps(laps), lapReviews: [], moduleResults: normalizeModuleResults(moduleResults), ...normalizeTrainingMeta(meta) };
+  const previousRecords = [...state.records];
   state.records.unshift(savedRecord);
-  state.records = state.records.slice(0, 500); saveRecords(); renderStats(); return savedRecord;
+  state.records = state.records.slice(0, 500);
+  if (!saveRecords()) { state.records = previousRecords; return null; }
+  renderStats(); return savedRecord;
 }
 
 function render() {
@@ -1133,6 +1281,7 @@ function render() {
   $('#pauseOverlay').setAttribute('aria-hidden', state.status === 'paused' ? 'false' : 'true');
   const warning = state.mode !== 'single' && state.status === 'running' && !isOvertime && state.remaining > 0 && state.remaining <= state.settings.warning;
   $('#timerDisplay').classList.toggle('warning', warning); $('#timerDisplay').classList.toggle('overtime', isOvertime); $('#timerDisplay').classList.toggle('paused', state.status === 'paused');
+  $('#timerDisplay').setAttribute('aria-disabled', String(state.status !== 'running'));
   $('#startBtn').innerHTML = state.status === 'running' ? 'Ⅱ<span>暂停</span>' : `▶<span>${state.status === 'paused' ? '继续' : '开始'}</span>`;
   $('#finishBtn').innerHTML = state.mode === 'single' ? '✓<span>结束并保存</span>' : '■<span>结束</span>';
   $('#resetBtn').disabled = state.status === 'idle'; $('#finishBtn').disabled = state.status === 'idle';
@@ -1247,9 +1396,11 @@ function updateLapReviewNote(event) {
 
 function saveLapReviews() {
   const record = state.records.find(item => item.id === state.reviewingRecordId), stats = getLapStats(record?.laps); if (!record || !stats) return;
+  const previousReviews = record.lapReviews;
   record.lapReviews = normalizeLapReviews(state.lapReviewDraft, stats.values.length);
   const counts = getLapReviewCounts(record.lapReviews, stats.values.length);
-  saveRecords(); renderStats(); closeLapDetail();
+  if (!saveRecords()) { record.lapReviews = previousReviews; return; }
+  renderStats(); closeLapDetail();
   showToast(counts.reviewed ? `逐题复盘已保存：已标记 ${counts.reviewed}/${stats.values.length} 题` : '记录已保留，可稍后在历史记录中补充逐题复盘');
 }
 
@@ -1351,7 +1502,8 @@ function renderTrendBars(buckets, days, metric, metricName) {
     const ratio = bucket.metric.hasData ? Math.max(3, bucket.metric.value / maxValue * 100) : 0;
     const showLabel = days === 7 || index === 0 || index === days - 1 || (index % 7 === 0 && index < days - 2), label = `${bucket.date.getMonth() + 1}/${bucket.date.getDate()}`;
     const detail = metric === 'accuracy' ? `${formatTrendValue(metric, bucket.metric.value)} · ${bucket.totals.accuracyQuestions} 题` : metric === 'score' ? `${formatTrendValue(metric, bucket.metric.value)} · ${bucket.totals.scoreCount} 次` : formatTrendValue(metric, bucket.metric.value);
-    return `<div class="trend-day${bucket.metric.hasData ? '' : ' no-data'}" title="${escapeAttribute(`${label} · ${bucket.metric.hasData ? detail : '暂无数据'}`)}"><div class="trend-bar-track"><i style="height:${ratio}%"></i></div><small>${showLabel ? label : ''}</small></div>`;
+    const accessibleDetail = `${label} · ${bucket.metric.hasData ? detail : '暂无数据'}`;
+    return `<div class="trend-day${bucket.metric.hasData ? '' : ' no-data'}" role="img" aria-label="${escapeAttribute(accessibleDetail)}" title="${escapeAttribute(accessibleDetail)}"><div class="trend-bar-track"><i style="height:${ratio}%"></i></div><small>${showLabel ? label : ''}</small></div>`;
   }).join('')}</div>${hasAnyData ? '' : `<div class="trend-empty-overlay">最近 ${days} 天暂无${metricName}数据</div>`}`;
 }
 
@@ -1591,9 +1743,15 @@ function renderStats() {
     const moduleReviewHtml = reviewedModuleResults.length ? `<span class="history-module-review">模块复盘 ${reviewedModuleResults.length}/${MOCK_MODULE_NAMES.length} 项${weakestModule ? ` · ${escapeHTML(weakestModule.module)} ${formatAccuracy(weakestModule.correct, weakestModule.questions)}` : ''}</span>` : '';
     const metaHtml = tags || notePreview || moduleReviewHtml ? `<span class="record-meta-tags">${tags}${moduleReviewHtml}</span>${notePreview ? `<span class="history-note">“${escapeHTML(notePreview)}”</span>` : ''}` : '';
     const benchmark = getHistoryBenchmark(r), benchmarkHtml = benchmark ? `<span class="history-benchmark">相对基准 · ${benchmark}</span>` : '';
-    return `<div class="history-row" data-record-id="${escapeAttribute(r.id)}"><button class="history-edit-trigger" data-edit-record-id="${escapeAttribute(r.id)}" type="button" aria-label="修改${escapeAttribute(r.module)}记录"><span class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${benchmarkHtml}${metaHtml}</span><span class="history-side"><strong class="history-duration">${formatClock(r.duration)}</strong><span>点击编辑</span></span></button><button class="delete-record" data-id="${escapeAttribute(r.id)}" title="删除记录">×</button>${reportLink || lapLink ? `<div class="history-record-actions">${reportLink}${lapLink}</div>` : ''}</div>`;
+    return `<div class="history-row" data-record-id="${escapeAttribute(r.id)}"><button class="history-edit-trigger" data-edit-record-id="${escapeAttribute(r.id)}" type="button" aria-label="修改${escapeAttribute(r.module)}记录"><span class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${benchmarkHtml}${metaHtml}</span><span class="history-side"><strong class="history-duration">${formatClock(r.duration)}</strong><span>点击编辑</span></span></button><button class="delete-record" data-id="${escapeAttribute(r.id)}" type="button" aria-label="删除${escapeAttribute(r.module)}记录" title="删除记录">×</button>${reportLink || lapLink ? `<div class="history-record-actions">${reportLink}${lapLink}</div>` : ''}</div>`;
   }).join('') : `<div class="empty-state">${historyFilter ? '没有符合筛选条件的记录' : '完成一次训练后，记录会显示在这里'}</div>`;
-  $$('.delete-record').forEach(btn => btn.addEventListener('click', () => { if (!confirm('确定删除这条训练记录吗？此操作无法撤销。')) return; state.records = state.records.filter(r => r.id !== btn.dataset.id); saveRecords(); renderStats(); }));
+  $$('.delete-record').forEach(btn => btn.addEventListener('click', () => {
+    if (!confirm('确定删除这条训练记录吗？此操作无法撤销。')) return;
+    const previousRecords = state.records;
+    state.records = state.records.filter(r => r.id !== btn.dataset.id);
+    if (!saveRecords()) { state.records = previousRecords; return; }
+    renderStats();
+  }));
   $$('.lap-detail-button').forEach(btn => btn.addEventListener('click', () => openLapDetail(btn.dataset.lapId)));
   $$('[data-mock-report-id]').forEach(btn => btn.addEventListener('click', () => openMockReport(btn.dataset.mockReportId)));
 }
@@ -1676,8 +1834,14 @@ function formatExportDateTime(value) {
 }
 
 function csvCell(value) {
-  const text = String(value ?? '');
+  let text = String(value ?? '');
+  if (/^[\s]*[=+\-@]/.test(text) || /^[\t\r]/.test(text)) text = `'${text}`;
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function cancelTrainingMetaDialog() {
+  if (state.pendingMeta?.previous) { returnToTrainingPreviousStep(); return; }
+  state.pendingMeta = null; $('#trainingMetaDialog').close(); render(); showToast('已返回计时，当前训练尚未保存');
 }
 
 function buildRecordsCsv(records = normalizeRecords(state.records)) {
@@ -1713,8 +1877,14 @@ function exportRecordsCsv() {
 }
 
 function normalizeImportedData(data) {
-  if (Array.isArray(data)) return { settings: buildSettingsSnapshot(), records: normalizeRecords(data) };
+  if (Array.isArray(data)) return { settings: buildSettingsSnapshot(), records: normalizeRecords(data).sort((a, b) => new Date(b.endedAt).getTime() - new Date(a.endedAt).getTime()).slice(0, 500) };
   if (!data || typeof data !== 'object') throw new Error('文件格式不正确');
+  const knownDataFields = ['settings', 'configuration', 'records', 'sectionDurations'];
+  if (!knownDataFields.some(field => Object.prototype.hasOwnProperty.call(data, field))) throw new Error('文件中没有可恢复的设置或训练记录');
+  if ('settings' in data && (!data.settings || typeof data.settings !== 'object' || Array.isArray(data.settings))) throw new Error('备份中的设置格式不正确');
+  if ('configuration' in data && (!data.configuration || typeof data.configuration !== 'object' || Array.isArray(data.configuration))) throw new Error('备份中的配置格式不正确');
+  if ('records' in data && !Array.isArray(data.records)) throw new Error('备份中的训练记录格式不正确');
+  if ('sectionDurations' in data && (!data.sectionDurations || typeof data.sectionDurations !== 'object' || Array.isArray(data.sectionDurations))) throw new Error('备份中的专项时间格式不正确');
   const importedSettings = data.settings && typeof data.settings === 'object' ? data.settings : {};
   const importedConfiguration = data.configuration && typeof data.configuration === 'object' ? data.configuration : {};
   const importedRecords = Array.isArray(data.records) ? data.records : [];
@@ -1736,7 +1906,8 @@ function normalizeImportedData(data) {
   mergedSettings.warning = Number.isFinite(warning) && warning > 0 ? warning : 60;
   mergedSettings.examCountdown = normalizeExamCountdown(importedSettings.examCountdown ?? mergedSettings.examCountdown);
   mergedSettings.sectionOrder = normalizeSectionOrder(importedSettings.sectionOrder || importedConfiguration.sectionOrder);
-  return { settings: mergedSettings, records: normalizeRecords(importedRecords) };
+  const records = normalizeRecords(importedRecords).sort((a, b) => new Date(b.endedAt).getTime() - new Date(a.endedAt).getTime()).slice(0, 500);
+  return { settings: mergedSettings, records };
 }
 
 function getRecordMergeKey(record) {
@@ -1749,15 +1920,25 @@ function getRecordMergeKey(record) {
   ].map(value => String(value ?? '')).join('|')}`;
 }
 
-function getMergeableRecordCount(records) {
-  const existingKeys = new Set(state.records.map(getRecordMergeKey));
-  const incomingKeys = new Set();
-  return records.filter(record => {
+function buildMergedRecordSet(records, currentRecords = state.records) {
+  const current = normalizeRecords(currentRecords);
+  const incoming = normalizeRecords(records);
+  const existingKeys = new Set(current.map(getRecordMergeKey));
+  const seen = new Set();
+  const incomingKeys = new Set(incoming.map(getRecordMergeKey));
+  const merged = [...current, ...incoming].filter(record => {
     const key = getRecordMergeKey(record);
-    if (existingKeys.has(key) || incomingKeys.has(key)) return false;
-    incomingKeys.add(key);
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
-  }).length;
+  }).sort((a, b) => new Date(b.endedAt).getTime() - new Date(a.endedAt).getTime()).slice(0, 500);
+  const finalKeys = new Set(merged.map(getRecordMergeKey));
+  const added = [...incomingKeys].filter(key => !existingKeys.has(key) && finalKeys.has(key)).length;
+  return { records: merged, added };
+}
+
+function getMergeableRecordCount(records) {
+  return buildMergedRecordSet(records).added;
 }
 
 function buildImportPreview(rawData, normalized, fileName = '') {
@@ -1795,26 +1976,47 @@ function renderRestorePreview(preview) {
   $('#restorePreviewWarning').innerHTML = `<strong>合并训练记录</strong>：预计新增 ${preview.mergeableRecordCount} 条，当前设置和已有记录不变。<br><strong>覆盖恢复</strong>：用备份中的设置和记录替换当前数据。`;
 }
 
+function saveImportedData(settings, records) {
+  let previousSettings = null, previousRecords = null, snapshotRead = false;
+  try {
+    previousSettings = localStorage.getItem(STORAGE_SETTINGS);
+    previousRecords = localStorage.getItem(STORAGE_RECORDS);
+    snapshotRead = true;
+    localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(settings));
+    localStorage.setItem(STORAGE_RECORDS, JSON.stringify(records));
+    return true;
+  } catch (error) {
+    console.error('备份恢复保存失败', error);
+    if (snapshotRead) {
+      try {
+        if (previousSettings === null) localStorage.removeItem(STORAGE_SETTINGS); else localStorage.setItem(STORAGE_SETTINGS, previousSettings);
+        if (previousRecords === null) localStorage.removeItem(STORAGE_RECORDS); else localStorage.setItem(STORAGE_RECORDS, previousRecords);
+      } catch (rollbackError) { console.error('备份恢复回滚失败', rollbackError); }
+    }
+    showToast('恢复失败：浏览器存储空间不足，原有数据已保留');
+    return false;
+  }
+}
+
 function restoreImportedData(data) {
-  state.settings = data.settings; state.records = data.records;
-  applyCustomDurations(); saveSettings(); saveRecords();
+  const nextSettings = data.settings;
+  const nextRecords = normalizeRecords(data.records).sort((a, b) => new Date(b.endedAt).getTime() - new Date(a.endedAt).getTime()).slice(0, 500);
+  if (!saveImportedData(nextSettings, nextRecords)) return false;
+  state.settings = nextSettings; state.records = nextRecords;
+  applyCustomDurations();
   if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; resetTimer(false); }
   applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); render(); renderDataManagementSummary();
+  return true;
 }
 
 function mergeImportedData(data) {
-  const currentCount = state.records.length;
-  const merged = normalizeRecords([...state.records, ...data.records]);
-  const seen = new Set();
-  state.records = merged.filter(record => {
-    const key = getRecordMergeKey(record);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).slice(0, 500);
-  saveRecords();
+  const result = buildMergedRecordSet(data.records);
+  if (!result.added) return 0;
+  const previousRecords = state.records;
+  state.records = result.records;
+  if (!saveRecords()) { state.records = previousRecords; return null; }
   renderStats(); renderDataManagementSummary();
-  return Math.max(0, state.records.length - currentCount);
+  return result.added;
 }
 
 async function importDataFile(file) {
@@ -1837,9 +2039,10 @@ function confirmRestoreImport(mode = 'replace') {
   const pendingImport = state.pendingImport;
   if (mode === 'merge') {
     const added = mergeImportedData(pendingImport);
+    if (added === null) return;
     showToast(added ? `已合并 ${added} 条训练记录` : '没有发现新的训练记录');
   } else {
-    restoreImportedData(pendingImport);
+    if (!restoreImportedData(pendingImport)) return;
     showToast('备份已覆盖恢复');
   }
   state.pendingImport = null;
@@ -1851,7 +2054,7 @@ function cancelRestoreImport() {
   $('#restorePreviewDialog').close();
 }
 
-const focusAudio = { ctx: null, source: null, gain: null, nodes: [], playing: false, type: null, beepAudio: null, beepUrl: "", alertPrimed: false, alertKeepAliveRequested: false, alertSource: null, alertGain: null };
+const focusAudio = { ctx: null, source: null, gain: null, nodes: [], playing: false, starting: false, startToken: 0, type: null, beepAudio: null, beepUrl: "", alertPrimed: false, alertKeepAliveRequested: false, alertSource: null, alertGain: null };
 
 async function ensureAudioContext(showWarning = false) {
   const AudioCtor = window.AudioContext || window.webkitAudioContext;
@@ -1997,14 +2200,17 @@ function showTimeUpNotice() {
 }
 
 async function startFocusSound(persist = true) {
+  if (focusAudio.starting) return false;
+  const startToken = ++focusAudio.startToken; focusAudio.starting = true;
   const settings = normalizeFocusSoundSettings({ ...state.settings.focusSound, enabled: true });
-  stopFocusSound(false);
+  stopFocusSound(false, false);
   const ctx = await ensureAudioContext(true);
+  if (startToken !== focusAudio.startToken) return false;
   if (!ctx || ctx.state !== 'running') {
     state.settings.focusSound = { ...settings, enabled: false };
     if (persist) saveSettings();
     syncFocusSoundUi();
-    return false;
+    focusAudio.starting = false; return false;
   }
   const source = ctx.createBufferSource(), gain = ctx.createGain();
   source.buffer = createNoiseBuffer(ctx, settings.type); source.loop = true;
@@ -2024,17 +2230,18 @@ async function startFocusSound(persist = true) {
     lfo.connect(lfoGain); lfoGain.connect(gain.gain); lfo.start(); focusAudio.nodes.push(lfo, lfoGain);
   }
   node.connect(gain); gain.connect(ctx.destination); source.start();
-  Object.assign(focusAudio, { source, gain, playing: true, type: settings.type });
+  Object.assign(focusAudio, { source, gain, playing: true, starting: false, type: settings.type });
   state.settings.focusSound = settings;
   if (persist) saveSettings();
   syncFocusSoundUi();
   return true;
 }
 
-function stopFocusSound(persist = true) {
+function stopFocusSound(persist = true, cancelPending = true) {
+  if (cancelPending) focusAudio.startToken += 1;
   try { focusAudio.source?.stop(); } catch {}
   [focusAudio.source, focusAudio.gain, ...focusAudio.nodes].forEach(node => { try { node?.disconnect?.(); } catch {} });
-  Object.assign(focusAudio, { source: null, gain: null, nodes: [], playing: false, type: null });
+  Object.assign(focusAudio, { source: null, gain: null, nodes: [], playing: false, type: null }, cancelPending ? { starting: false } : {});
   if (persist) { state.settings.focusSound = { ...normalizeFocusSoundSettings(), enabled: false }; saveSettings(); syncFocusSoundUi(); }
 }
 
@@ -2064,7 +2271,7 @@ async function toggleFocusSound(enabled) {
 
 function maybeResumeFocusSound() {
   const settings = normalizeFocusSoundSettings();
-  if (settings.enabled && !focusAudio.playing) startFocusSound(false);
+  if (settings.enabled && !focusAudio.playing && !focusAudio.starting) startFocusSound(false);
 }
 
 function syncFocusSoundUi() {
@@ -2121,8 +2328,18 @@ function resetFinishDialog() {
   $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').textContent = '保存记录';
 }
 function showCompletion(title,message){ resetFinishDialog(); $('#dialogTitle').textContent=title;$('#dialogMessage').textContent=message;$('#cancelFinishBtn').classList.add('hidden');$('#confirmFinishBtn').textContent='知道了';$('#finishDialog').showModal(); }
-function openDrawer(drawer){ closeDrawers();drawer.classList.add('open');drawer.setAttribute('aria-hidden','false');$('#backdrop').classList.remove('hidden'); }
-function closeDrawers(){ $$('.drawer').forEach(d=>{d.classList.remove('open');d.setAttribute('aria-hidden','true')});$('#backdrop').classList.add('hidden'); }
+let drawerReturnFocus = null;
+function openDrawer(drawer){
+  closeDrawers(false); drawerReturnFocus = document.activeElement;
+  drawer.classList.add('open'); drawer.setAttribute('aria-hidden','false'); drawer.inert = false; $('#backdrop').classList.remove('hidden');
+  requestAnimationFrame(() => drawer.querySelector('.close-drawer,button,input,select,textarea')?.focus());
+}
+function closeDrawers(restoreFocus = true){
+  const hadOpenDrawer = Boolean($('.drawer.open'));
+  $$('.drawer').forEach(d=>{d.classList.remove('open');d.setAttribute('aria-hidden','true');d.inert=true});$('#backdrop').classList.add('hidden');
+  if (restoreFocus && hadOpenDrawer && drawerReturnFocus?.isConnected) drawerReturnFocus.focus();
+  if (hadOpenDrawer) drawerReturnFocus = null;
+}
 
 let pipWindow = null;
 let pipStream = null;
@@ -2131,7 +2348,7 @@ const pipVideo = $('#pipVideo');
 const pipCanvas = $('#pipCanvas');
 const pipContext = pipCanvas.getContext('2d');
 const pipOutputCanvas = $('#pipOutputCanvas');
-const pipGl = pipOutputCanvas.getContext('webgl2', { alpha: false, antialias: false }) || pipOutputCanvas.getContext('webgl', { alpha: false, antialias: false });
+let pipGl = null;
 let pipGlProgram = null;
 let pipGlTexture = null;
 let pipCaptionTrack = null;
@@ -2160,7 +2377,9 @@ function createShader(gl, type, source) {
 }
 
 function initWebGlPip() {
-  if (!pipGl || pipGlProgram) return;
+  if (pipGlProgram) return;
+  pipGl = pipOutputCanvas.getContext('webgl2', { alpha: false, antialias: false }) || pipOutputCanvas.getContext('webgl', { alpha: false, antialias: false });
+  if (!pipGl) return;
   const vertex = createShader(pipGl, pipGl.VERTEX_SHADER, 'attribute vec2 p;attribute vec2 t;varying vec2 v;void main(){gl_Position=vec4(p,0.,1.);v=t;}');
   const fragment = createShader(pipGl, pipGl.FRAGMENT_SHADER, 'precision mediump float;uniform sampler2D image;varying vec2 v;void main(){gl_FragColor=texture2D(image,v);}');
   pipGlProgram = pipGl.createProgram(); pipGl.attachShader(pipGlProgram, vertex); pipGl.attachShader(pipGlProgram, fragment); pipGl.linkProgram(pipGlProgram); pipGl.useProgram(pipGlProgram);
@@ -2175,16 +2394,20 @@ function initWebGlPip() {
 }
 
 function renderWebGlPip() {
-  if (!pipGl) return;
-  initWebGlPip(); pipGl.viewport(0, 0, pipOutputCanvas.width, pipOutputCanvas.height);
+  initWebGlPip();
+  if (!pipGl || !pipGlProgram) return;
+  pipGl.viewport(0, 0, pipOutputCanvas.width, pipOutputCanvas.height);
   pipGl.bindTexture(pipGl.TEXTURE_2D, pipGlTexture); pipGl.texImage2D(pipGl.TEXTURE_2D, 0, pipGl.RGBA, pipGl.RGBA, pipGl.UNSIGNED_BYTE, pipCanvas);
   pipGl.drawArrays(pipGl.TRIANGLES, 0, 6); pipGl.flush();
 }
 
 function keepPipFramesAlive() {
   if (pipFrame) return;
-  const refresh = () => { drawVideoPip(); pipFrame = requestAnimationFrame(refresh); };
-  pipFrame = requestAnimationFrame(refresh);
+  drawVideoPip(); pipFrame = setInterval(drawVideoPip, 500);
+}
+
+function stopPipFrames() {
+  clearInterval(pipFrame); pipFrame = null;
 }
 
 async function ensureVideoPipSource() {
@@ -2270,7 +2493,7 @@ async function toggleVideoPip() {
   if (supportsSafariPip()) {
     const leaving = pipVideo.webkitPresentationMode === 'picture-in-picture';
     pipVideo.webkitSetPresentationMode(leaving ? 'inline' : 'picture-in-picture');
-    if (leaving) stopMobilePipSyncLoop();
+    if (leaving) { stopMobilePipSyncLoop(); stopPipFrames(); }
     else { syncNativeVideoTime(true); startMobilePipSyncLoop(); }
     if (!leaving && isAppleMobile()) showToast('已开启画中画，可返回桌面或切换应用');
     return;
@@ -2289,7 +2512,7 @@ async function togglePip() {
     if ('documentPictureInPicture' in window && !isAppleMobile()) {
       pipWindow = await documentPictureInPicture.requestWindow({ width: 340, height: 180 });
       const style = pipWindow.document.createElement('style'); style.textContent='body{margin:0;background:#18201b;color:#f2f5f2;display:grid;place-items:center;height:100vh;font-family:Segoe UI,sans-serif}.wrap{text-align:center}.time{font:700 48px Consolas,monospace}.name{color:#a9b8ae;margin-bottom:8px}.status{color:#73ae92;font-size:12px;margin-top:8px}'; pipWindow.document.head.append(style);
-      pipWindow.document.body.innerHTML='<div class="wrap"><div class="name"></div><div class="time"></div><div class="status"></div></div>'; pipWindow.addEventListener('pagehide',()=>pipWindow=null); updatePip(); return;
+      pipWindow.document.body.innerHTML='<div class="wrap"><div class="name"></div><div class="time"></div><div class="status"></div></div>'; pipWindow.addEventListener('pagehide',()=>{pipWindow=null;stopPipFrames()}); updatePip(); return;
     }
     await toggleVideoPip();
   } catch {
@@ -2305,9 +2528,10 @@ window.syncNativeVideoTime = syncNativeVideoTime;
 window.getMobilePipTargetTime = getMobilePipTargetTime;
 
 function updatePip(){
-  drawVideoPip();
-  syncNativeVideoTime();
-  updateNativeCaption();
+  const nativePipActive = pipVideo.webkitPresentationMode === 'picture-in-picture' || document.pictureInPictureElement === pipVideo;
+  if (!pipWindow && !nativePipActive) return;
+  if (pipWindow || !isAppleMobile()) drawVideoPip();
+  if (nativePipActive) { syncNativeVideoTime(); updateNativeCaption(); }
   if(!pipWindow)return;
   pipWindow.document.querySelector('.name').textContent=state.preset.name;pipWindow.document.querySelector('.time').textContent=formatClock(state.mode==='single'?state.elapsed:state.remaining);pipWindow.document.querySelector('.status').textContent={idle:'准备开始',running:'计时中',paused:'已暂停',finished:'本轮结束'}[state.status];
 }
@@ -2341,16 +2565,17 @@ $('#recordEditForm').addEventListener('submit', event => { event.preventDefault(
 $('#cancelRecordEditBtn').addEventListener('click', closeRecordEditor);
 $('#recordEditDialog').addEventListener('cancel', event => { event.preventDefault(); closeRecordEditor(); });
 $('#skipMockModuleBtn').addEventListener('click', () => finishMockModuleReview(true)); $('#saveMockModuleBtn').addEventListener('click', () => finishMockModuleReview(false));
-$('#mockModuleDialog').addEventListener('cancel', event => { event.preventDefault(); finishMockModuleReview(true); });
+$('#backMockModuleBtn').addEventListener('click', returnFromMockModuleReview);
+$('#mockModuleDialog').addEventListener('cancel', event => { event.preventDefault(); returnFromMockModuleReview(); });
 $('#closeMockReportBtn').addEventListener('click', () => $('#mockReportDialog').close());
 $('#editMockReportBtn').addEventListener('click', () => editMockReport($('#editMockReportBtn').dataset.mockReportId));
 $('#openReportLapReviewBtn').addEventListener('click', () => openReportLapReview($('#openReportLapReviewBtn').dataset.lapId));
-$('#trainingMetaDialog').addEventListener('cancel', event => { event.preventDefault(); finishTrainingMeta(true); });
+$('#trainingMetaDialog').addEventListener('cancel', event => { event.preventDefault(); cancelTrainingMetaDialog(); });
 $('#lapDetailList').addEventListener('click', updateLapReviewFromClick); $('#lapDetailList').addEventListener('input', updateLapReviewNote);
 $('#saveLapReviewBtn').addEventListener('click', saveLapReviews); $('#closeLapDetailBtn').addEventListener('click', closeLapDetail);
 $('#lapDetailDialog').addEventListener('cancel', event => { event.preventDefault(); closeLapDetail(); });
 $('#statsBtn').addEventListener('click', openStatsDrawer);$('#settingsBtn').addEventListener('click',()=>openSettingsDrawer());$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
-$('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){state.records=[];saveRecords();renderStats();}});
+$('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){const previousRecords=state.records;state.records=[];if(!saveRecords()){state.records=previousRecords;return;}renderStats();}});
 $('#historyFilter').addEventListener('change', renderStats);
 $('#historyList').addEventListener('click', openRecordFromHistoryEvent);
 $('#historyList').addEventListener('keydown', openRecordFromHistoryKey);
@@ -2359,11 +2584,12 @@ $$('[data-trend-metric]').forEach(button => button.addEventListener('click', () 
 $$('[data-trend-visual]').forEach(button => button.addEventListener('click', () => { state.trendVisual = button.dataset.trendVisual; renderStats(); }));
 $$('[data-stats-view]').forEach(button => button.addEventListener('click', () => setStatsView(button.dataset.statsView)));
 $$('[data-settings-view]').forEach(button => button.addEventListener('click', () => setSettingsView(button.dataset.settingsView)));
-$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;if(!e.target.checked)stopAlertKeepAlive();saveSettings()});$('#warmupSoundBtn').addEventListener('click',warmUpAlertSound);$('#focusSoundToggle').addEventListener('change',e=>toggleFocusSound(e.target.checked));$$('[data-focus-sound]').forEach(button=>button.addEventListener('click',()=>setFocusSoundType(button.dataset.focusSound)));$('#focusSoundVolume').addEventListener('input',e=>setFocusSoundVolume(+e.target.value));$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();saveSettings();showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
+$('#soundToggle').addEventListener('change',e=>{state.settings.sound=e.target.checked;if(!e.target.checked)stopAlertKeepAlive();saveSettings()});$('#warmupSoundBtn').addEventListener('click',warmUpAlertSound);$('#focusSoundToggle').addEventListener('change',e=>toggleFocusSound(e.target.checked));$$('[data-focus-sound]').forEach(button=>button.addEventListener('click',()=>setFocusSoundType(button.dataset.focusSound)));$('#focusSoundVolume').addEventListener('input',e=>setFocusSoundVolume(+e.target.value));$('#pacingToggle').addEventListener('change',e=>{state.settings.pacing=e.target.checked;state.pacingNotified=[];saveSettings();render()});$('#shortcutsToggle').addEventListener('change',e=>{state.settings.shortcuts=e.target.checked;applySettings();if(saveSettings())showToast(e.target.checked?'全局快捷键已开启':'全局快捷键已关闭')});$('#themeToggle').addEventListener('change',e=>{state.settings.dark=e.target.checked;applySettings();saveSettings()});
 $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.target.value;applySettings();saveSettings()});$('#warningRange').addEventListener('input',e=>{state.settings.warning=+e.target.value;applySettings();saveSettings();render()});
 $('#examCountdownOpenBtn').addEventListener('click', openExamCountdownSettings); $('#examCheckinBtn').addEventListener('click', checkInExamCountdown);
 $('#saveExamCountdownBtn').addEventListener('click', saveExamCountdownSettings); $('#settingsExamCheckinBtn').addEventListener('click', checkInExamCountdown);
 $('#saveSectionTimesBtn').addEventListener('click', saveSectionTimes);
+$('#sectionTimeGrid').addEventListener('click', event => { const button = event.target.closest('[data-move-section]'); if (button) moveSectionCard(button); });
 $('#sectionTimeGrid').addEventListener('pointerdown', event => {
   if (event.pointerType === 'touch' || event.button !== 0 || event.target.closest('input,button,a')) return;
   const card = event.target.closest('[data-section-card]'); if (card) beginSectionSort(card, event.clientX, event.clientY, 'pointer', event.pointerId);
@@ -2386,9 +2612,15 @@ $('#sectionTimeGrid').addEventListener('dragstart', event => event.preventDefaul
 $('#exportDataBtn').addEventListener('click', exportData); $('#exportCsvBtn').addEventListener('click', exportRecordsCsv); $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click()); $('#importDataInput').addEventListener('change', e => { importDataFile(e.target.files[0]); e.target.value = ''; });
 $('#cancelRestoreBtn').addEventListener('click', cancelRestoreImport); $('#confirmMergeRestoreBtn').addEventListener('click', () => confirmRestoreImport('merge')); $('#confirmRestoreBtn').addEventListener('click', () => confirmRestoreImport('replace'));
 $('#pipBtn').addEventListener('click',togglePip);
+pipVideo.addEventListener('leavepictureinpicture', stopPipFrames);
+document.addEventListener('keydown', event => { if (event.key === 'Escape' && !document.querySelector('dialog[open]') && $('.drawer.open')) closeDrawers(); });
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(error => console.warn('Service Worker 注册失败', error)));
 }
 document.addEventListener('pointerdown', maybeResumeFocusSound, { passive: true });
 document.addEventListener('keydown', maybeResumeFocusSound);
-window.addEventListener('beforeunload', () => { stopInterval(); stopMobilePipSyncLoop(); stopFocusSound(false); }); applyCustomDurations(); applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); renderDataManagementSummary(); render();
+window.addEventListener('beforeunload', () => { if (state.status === 'running') tick(true); persistActiveSession(true); stopInterval(); stopMobilePipSyncLoop(); stopPipFrames(); stopFocusSound(false); });
+applyCustomDurations();
+const recoveredActiveSession = restoreActiveSession();
+applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); renderDataManagementSummary(); render();
+if (recoveredActiveSession) setTimeout(() => showToast('已恢复上次未完成的训练，当前处于暂停状态'), 120);

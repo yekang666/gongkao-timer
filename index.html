@@ -20,7 +20,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><img src="assets/app-icon.png" alt=""></span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.18.0</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.19.0</span></div><small>训练工作台</small></div>
       </div>
       <div class="exam-countdown" id="examCountdown">
         <button class="exam-countdown-main" id="examCountdownOpenBtn" type="button" title="设置考试倒计时">
@@ -39,9 +39,9 @@
 
     <main class="workspace">
       <nav class="mode-tabs" aria-label="计时模式">
-        <button class="mode-tab active" data-mode="mock" type="button"><span>模考模式</span><small>整套模拟</small></button>
-        <button class="mode-tab" data-mode="section" type="button"><span>专项模式</span><small>模块提速</small></button>
-        <button class="mode-tab" data-mode="single" type="button"><span>自由测速</span><small>题量统计</small></button>
+        <button class="mode-tab active" data-mode="mock" type="button" aria-pressed="true"><span>模考模式</span><small>整套模拟</small></button>
+        <button class="mode-tab" data-mode="section" type="button" aria-pressed="false"><span>专项模式</span><small>模块提速</small></button>
+        <button class="mode-tab" data-mode="single" type="button" aria-pressed="false"><span>自由测速</span><small>题量统计</small></button>
       </nav>
 
       <section class="timer-stage" aria-labelledby="sessionTitle">
@@ -52,7 +52,7 @@
           <span id="sessionTitle">行测模考</span>
         </div>
         <div class="timer-visual">
-          <div class="timer" id="timerDisplay" aria-live="polite">02:00:00</div>
+          <div class="timer" id="timerDisplay" role="button" tabindex="-1" aria-label="计时显示；自由测速时可点击完成一题">02:00:00</div>
           <div class="pause-overlay" id="pauseOverlay" role="status" aria-live="polite" aria-hidden="true"><strong>已暂停</strong><span>点击“继续”恢复计时</span></div>
         </div>
         <p class="timer-hint" id="timerHint">建议按正式考试节奏完成，计时结束将自动记录</p>
@@ -84,7 +84,7 @@
   </div>
 
   <div class="backdrop hidden" id="backdrop"></div>
-  <aside class="drawer" id="statsDrawer" aria-hidden="true">
+  <aside class="drawer" id="statsDrawer" aria-hidden="true" inert>
     <div class="drawer-header"><div><span class="eyebrow">训练记录</span><h2>数据复盘</h2></div><button class="icon-button close-drawer" type="button" aria-label="关闭">×</button></div>
     <nav class="stats-view-tabs" aria-label="数据复盘分类">
       <button data-stats-view="overview" type="button" aria-pressed="true">概览</button>
@@ -107,7 +107,7 @@
     <section class="drawer-section grow hidden" data-stats-panel="history"><div class="section-title"><h3>最近记录</h3><div class="history-tools"><select id="historyFilter" aria-label="筛选训练记录"><option value="">全部记录</option><optgroup label="难度"><option value="difficulty:简单">简单</option><option value="difficulty:正常">正常</option><option value="difficulty:较难">较难</option></optgroup></select><button class="danger-link" id="clearAllBtn" type="button">清空全部</button></div></div><div class="history-list" id="historyList"></div></section>
   </aside>
 
-  <aside class="drawer" id="settingsDrawer" aria-hidden="true">
+  <aside class="drawer" id="settingsDrawer" aria-hidden="true" inert>
     <div class="drawer-header"><div><span class="eyebrow">个人偏好</span><h2>计时设置</h2></div><button class="icon-button close-drawer" type="button" aria-label="关闭">×</button></div>
     <nav class="settings-view-tabs" aria-label="设置分类">
       <button data-settings-view="general" type="button" aria-pressed="true">常用</button>
@@ -140,7 +140,7 @@
     </div>
   </aside>
 
-  <dialog id="finishDialog">
+  <dialog id="finishDialog" aria-labelledby="dialogTitle">
     <div class="dialog-icon">✓</div><h2 id="dialogTitle">本次训练已完成</h2><p id="dialogMessage"></p>
     <label class="question-input hidden" id="scoreInputWrap">本次分数<input id="finishScore" type="number" min="0" max="100" step="0.5" inputmode="decimal" value=""></label>
     <label class="question-input hidden" id="questionInputWrap">完成题数<input id="finishQuestionCount" type="number" min="1" step="1" inputmode="numeric" value=""></label>
@@ -152,7 +152,7 @@
     <div class="dialog-actions"><button class="secondary" id="cancelFinishBtn" type="button">取消</button><button class="primary" id="confirmFinishBtn" type="button">保存记录</button></div>
   </dialog>
 
-  <dialog id="singleModuleDialog" data-step="questions">
+  <dialog id="singleModuleDialog" data-step="questions" aria-labelledby="singleDialogTitle">
     <div class="dialog-icon" id="singleDialogIcon">1</div>
     <span class="dialog-kicker" id="singleDialogKicker">第 1 步 · 选择分类</span>
     <h2 id="singleDialogTitle">先选择本次刷题类型</h2>
@@ -169,7 +169,7 @@
     <div class="dialog-actions"><button class="secondary" id="cancelSingleModuleBtn" type="button">取消</button><button class="secondary hidden" id="previousSpeedStepBtn" type="button">上一步</button><button class="primary hidden" id="nextSpeedStepBtn" type="button">下一步</button></div>
   </dialog>
 
-  <dialog id="trainingMetaDialog">
+  <dialog id="trainingMetaDialog" aria-labelledby="trainingMetaTitle">
     <div class="dialog-icon">✎</div>
     <span class="dialog-kicker">可选信息</span>
     <h2 id="trainingMetaTitle">补充训练复盘</h2>
@@ -180,7 +180,7 @@
     <div class="dialog-actions"><button class="secondary" id="backTrainingMetaBtn" type="button">上一步</button><button class="secondary" id="skipTrainingMetaBtn" type="button">跳过并保存</button><button class="primary" id="confirmTrainingMetaBtn" type="button">保存记录</button></div>
   </dialog>
 
-  <dialog id="recordEditDialog">
+  <dialog id="recordEditDialog" aria-labelledby="recordEditTitle">
     <div class="dialog-icon">✎</div>
     <span class="dialog-kicker">训练记录</span>
     <h2 id="recordEditTitle">修改训练记录</h2>
@@ -205,17 +205,17 @@
     </form>
   </dialog>
 
-  <dialog id="restorePreviewDialog">
+  <dialog id="restorePreviewDialog" aria-labelledby="restorePreviewTitle">
     <div class="dialog-icon">↺</div>
     <span class="dialog-kicker">恢复前确认</span>
-    <h2>确认恢复这份备份吗？</h2>
+    <h2 id="restorePreviewTitle">确认恢复这份备份吗？</h2>
     <p id="restorePreviewMessage">你可以选择覆盖当前数据，或只合并备份中的训练记录。</p>
     <div class="restore-preview-grid" id="restorePreviewDetails"></div>
     <div class="restore-warning" id="restorePreviewWarning"></div>
     <div class="dialog-actions restore-actions"><button class="secondary" id="cancelRestoreBtn" type="button">取消</button><button class="secondary" id="confirmMergeRestoreBtn" type="button">合并训练记录</button><button class="primary" id="confirmRestoreBtn" type="button">覆盖恢复</button></div>
   </dialog>
 
-  <dialog id="mockModuleDialog">
+  <dialog id="mockModuleDialog" aria-labelledby="mockModuleTitle">
     <div class="dialog-icon">≡</div>
     <span class="dialog-kicker">行测模考复盘</span>
     <h2 id="mockModuleTitle">各模块做对多少题？</h2>
@@ -223,10 +223,10 @@
     <label class="mock-module-score hidden" id="mockModuleScoreWrap"><span>本次总分</span><input id="mockModuleScore" type="number" min="0" max="100" step="0.5" inputmode="decimal" placeholder="0 - 100"><small>修改后将重新计算模考趋势</small></label>
     <div class="mock-module-summary" id="mockModuleSummary"></div>
     <div class="mock-module-list" id="mockModuleList"></div>
-    <div class="dialog-actions"><button class="secondary" id="skipMockModuleBtn" type="button">跳过模块复盘</button><button class="primary" id="saveMockModuleBtn" type="button">保存并继续</button></div>
+    <div class="dialog-actions"><button class="secondary" id="backMockModuleBtn" type="button">上一步</button><button class="secondary" id="skipMockModuleBtn" type="button">跳过模块复盘</button><button class="primary" id="saveMockModuleBtn" type="button">保存并继续</button></div>
   </dialog>
 
-  <dialog id="mockReportDialog">
+  <dialog id="mockReportDialog" aria-labelledby="mockReportTitle">
     <div class="dialog-icon">▤</div>
     <span class="dialog-kicker">行测模考报告</span>
     <h2 id="mockReportTitle">本次模考结论</h2>
@@ -237,7 +237,7 @@
     <div class="dialog-actions"><button class="secondary" id="editMockReportBtn" type="button">补充或修正</button><button class="secondary hidden" id="openReportLapReviewBtn" type="button">逐题复盘</button><button class="primary" id="closeMockReportBtn" type="button">完成</button></div>
   </dialog>
 
-  <dialog id="lapDetailDialog">
+  <dialog id="lapDetailDialog" aria-labelledby="lapDetailTitle">
     <div class="dialog-icon">⌁</div>
     <span class="dialog-kicker">逐题复盘</span>
     <h2 id="lapDetailTitle">本次逐题表现</h2>

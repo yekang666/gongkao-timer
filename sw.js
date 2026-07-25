@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'gongkao-timer-';
-const CACHE_NAME = `${CACHE_PREFIX}v2.18.0`;
+const CACHE_NAME = `${CACHE_PREFIX}v2.19.0`;
 const FRESH_APP_FILES = new Set(['index.html', 'styles.css', 'app.js', 'manifest.webmanifest']);
 const APP_SHELL = [
   './',
@@ -7,8 +7,6 @@ const APP_SHELL = [
   './styles.css',
   './app.js',
   './manifest.webmanifest',
-  './pip-countdown.mp4',
-  './pip-stopwatch.mp4',
   './assets/app-icon.png',
   './assets/app-icon-192.png',
   './assets/apple-touch-icon.png',
@@ -38,10 +36,24 @@ async function networkFirst(request) {
     if (response.ok) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone());
+      return response;
+    }
+
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    if (request.mode === 'navigate') {
+      const appShell = await caches.match('./index.html');
+      if (appShell) return appShell;
     }
     return response;
-  } catch {
-    return (await caches.match(request)) || caches.match('./index.html');
+  } catch (error) {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    if (request.mode === 'navigate') {
+      const appShell = await caches.match('./index.html');
+      if (appShell) return appShell;
+    }
+    throw error;
   }
 }
 

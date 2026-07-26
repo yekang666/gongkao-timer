@@ -1,9 +1,9 @@
 import { $, $$, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, saveRecords, state, toScore } from './core.js';
-import { addCustomLapReason, getAllLapReasons } from './reasons.js';
+import { addCustomLapReason, getAllLapReasons, isCustomLapReason, removeCustomLapReason } from './reasons.js';
 import { formatClock, formatScore } from './format.js';
 import { renderStats } from './stats.js';
 import { renderLapPanel, renderPacingStatus } from './timer.js';
-import { appPrompt, showToast } from './ui.js';
+import { appConfirm, appPrompt, showToast } from './ui.js';
 
 function render() {
   const isOvertime = state.mode !== 'single' && state.autoFinished;
@@ -70,7 +70,11 @@ function renderLapReviewList(record, stats) {
     const statusButtons = [['correct', '✓ 正确'], ['wrong', '× 错误'], ['skipped', '— 跳过']].map(([status, label]) => `<button type="button" data-review-status="${status}" aria-pressed="${review.status === status}">${label}</button>`).join('');
     const reasonList = getAllLapReasons();
     const reasonOptions = review.reason && !reasonList.includes(review.reason) ? [...reasonList, review.reason] : reasonList;
-    const reasonButtons = reasonOptions.map(reason => `<button type="button" data-review-reason="${escapeAttribute(reason)}" aria-pressed="${review.reason === reason}">${escapeHTML(reason)}</button>`).join('') + '<button type="button" class="lap-reason-add" data-review-add-reason aria-label="添加自定义错因">＋ 自定义</button>';
+    const reasonButtons = reasonOptions.map(reason => {
+      const pick = `<button type="button" data-review-reason="${escapeAttribute(reason)}" aria-pressed="${review.reason === reason}">${escapeHTML(reason)}</button>`;
+      // 自定义标签附带删除按钮（内置错因与历史遗留标签不可删）
+      return isCustomLapReason(reason) ? `<span class="lap-reason-custom-wrap">${pick}<button type="button" class="lap-reason-remove" data-remove-reason="${escapeAttribute(reason)}" aria-label="删除自定义错因${escapeAttribute(reason)}">×</button></span>` : pick;
+    }).join('') + '<button type="button" class="lap-reason-add" data-review-add-reason aria-label="添加自定义错因">＋ 自定义</button>';
     const fields = review.status ? `<div class="lap-review-fields">${review.status === 'wrong' ? `<div class="lap-reason-choices" aria-label="第 ${index + 1} 题错因"><small>错因（可选）</small><div>${reasonButtons}</div></div>` : ''}<label><span>本题备注（可选）</span><input data-review-note type="text" maxlength="120" value="${escapeAttribute(review.note)}" placeholder="记录思路、陷阱或下次注意事项"></label></div>` : '';
     return `<article class="lap-review-card${costlyWrong ? ' costly-wrong' : ''}" data-review-index="${index}"><div class="lap-detail-row"><span>第 ${index + 1} 题</span><div><i style="width:${ratio}%"></i></div><strong>${formatClock(duration).slice(3)}</strong>${marker}</div><div class="lap-status-choices" aria-label="第 ${index + 1} 题作答结果">${statusButtons}</div>${fields}</article>`;
   }).join('');
@@ -106,11 +110,19 @@ function closeLapDetail() {
 }
 
 function updateLapReviewFromClick(event) {
-  const button = event.target.closest('[data-review-status],[data-review-reason],[data-review-add-reason]'); if (!button) return;
+  const button = event.target.closest('[data-review-status],[data-review-reason],[data-review-add-reason],[data-remove-reason]'); if (!button) return;
   const card = button.closest('[data-review-index]'), index = Number(card?.dataset.reviewIndex);
   const record = state.records.find(item => item.id === state.reviewingRecordId), stats = getLapStats(record?.laps);
   if (!Number.isInteger(index) || !record || !stats) return;
   const review = getLapReviewDraftItem(index);
+  if ('removeReason' in button.dataset) {
+    const name = button.dataset.removeReason;
+    if (!appConfirm(`删除自定义错因「${name}」？\n历史记录中已标记的「${name}」会保留，只是之后打标时不再显示这个选项。`)) return;
+    if (!removeCustomLapReason(name)) return;
+    showToast(`已删除错因「${name}」`);
+    const scrollTop = $('#lapDetailList').scrollTop; renderLapReviewList(record, stats); $('#lapDetailList').scrollTop = scrollTop;
+    return;
+  }
   if ('reviewAddReason' in button.dataset) {
     if (review.status !== 'wrong') return;
     const rawName = appPrompt('输入自定义错因（最多 12 字），会保存为常用选项：', '');

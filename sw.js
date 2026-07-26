@@ -1,11 +1,12 @@
 const CACHE_PREFIX = 'gongkao-timer-';
-const CACHE_NAME = `${CACHE_PREFIX}v2.20.0`;
-const FRESH_APP_FILES = new Set(['index.html', 'styles.css', 'app.js', 'manifest.webmanifest']);
+const CACHE_NAME = `${CACHE_PREFIX}v2.21.0`;
+const APP_MODULES = ['analytics', 'audio', 'backup', 'core', 'exam', 'format', 'main', 'mock', 'pip', 'records', 'render', 'sections', 'speed', 'stats', 'timer', 'ui'];
+const FRESH_APP_FILES = new Set(['index.html', 'styles.css', 'manifest.webmanifest', ...APP_MODULES.map(name => `${name}.js`)]);
 const APP_SHELL = [
   './',
   './index.html',
   './styles.css',
-  './app.js',
+  ...APP_MODULES.map(name => `./js/${name}.js`),
   './manifest.webmanifest',
   './assets/app-icon.png',
   './assets/app-icon-192.png',

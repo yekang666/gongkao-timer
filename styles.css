@@ -1279,3 +1279,11 @@ body.dark .custom-reason-chip{background:color-mix(in srgb,var(--accent) 20%,var
 .predict-compare strong.target-gap{color:var(--warning)}
 .predict-compare strong.target-ok{color:var(--accent)}
 body.dark .target-row{background:color-mix(in srgb,var(--surface-2) 70%,transparent)}
+
+/* ===== 顶部按钮文字标注 ===== */
+.icon-button.labeled{width:auto;min-width:52px;height:44px;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:4px 10px;border-radius:8px}
+.icon-button.labeled .icon-glyph{font-size:15px;line-height:1.1}
+.icon-button.labeled .icon-label{font-size:10px;line-height:1.2;color:var(--muted);letter-spacing:.5px}
+.icon-button.labeled:hover .icon-label{color:var(--accent)}
+@media(max-width:640px){.icon-button.labeled{min-width:48px;height:44px;padding:3px 7px}.icon-button.labeled .icon-glyph{font-size:14px}}
+@media(max-width:360px){.icon-button.labeled{min-width:42px;padding:3px 5px}.icon-button.labeled .icon-label{letter-spacing:0}}

@@ -1,4 +1,4 @@
-import { $, $$, SECTION_QUESTION_COUNTS, SPEED_SCORE_TYPES, TRACKING_CATEGORIES, clearActiveSession, normalizeLaps, normalizeModuleResults, normalizeTrainingMeta, persistActiveSession, saveRecords, state, toNonNegativeInt, toScore } from './core.js';
+import { $, $$, SECTION_QUESTION_COUNTS, SPEED_SCORE_TYPES, TRACKING_CATEGORIES, capRecords, clearActiveSession, normalizeLaps, normalizeModuleResults, normalizeTrainingMeta, persistActiveSession, saveRecords, state, toNonNegativeInt, toScore } from './core.js';
 import { formatAccuracy, formatClock, formatScore } from './format.js';
 import { openTrainingMetaDialog } from './mock.js';
 import { syncMobilePipSource, syncNativeVideoTime } from './pip.js';
@@ -175,7 +175,7 @@ function finalizeSpeedSession(moduleName, meta = {}) {
   const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, questions, papers, correct, score, laps: session.laps, lapReviews: [], ...normalizeTrainingMeta(meta) };
   const previousRecords = [...state.records];
   state.records.unshift(savedRecord);
-  state.records = state.records.slice(0, 500);
+  state.records = capRecords(state.records);
   if (!saveRecords()) { state.records = previousRecords; return; }
   const resultText = score !== null ? `分数 ${formatScore(score)}` : `${questions} 题，正确率 ${formatAccuracy(correct, questions)}`;
   const paceText = questions ? `，均时 ${formatClock(session.duration / questions).slice(3)}` : '';
@@ -202,7 +202,7 @@ function saveSession(questions, papers = null, correct = null, score = null, lap
   const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt, questions, papers, correct, score, laps: normalizeLaps(laps), lapReviews: [], moduleResults: normalizeModuleResults(moduleResults), ...normalizeTrainingMeta(meta) };
   const previousRecords = [...state.records];
   state.records.unshift(savedRecord);
-  state.records = state.records.slice(0, 500);
+  state.records = capRecords(state.records);
   if (!saveRecords()) { state.records = previousRecords; return null; }
   renderStats(); return savedRecord;
 }

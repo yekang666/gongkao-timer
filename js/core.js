@@ -19,7 +19,7 @@ function $$(selector) { return [...document.querySelectorAll(selector)]; }
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
 const STORAGE_SESSION = 'examTimer.activeSession.v1';
-const APP_VERSION = 'v2.26.2';
+const APP_VERSION = 'v2.26.3';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -192,6 +192,14 @@ function saveToStorage(key, value, label) {
 }
 function saveSettings() { return saveToStorage(STORAGE_SETTINGS, state.settings, '设置'); }
 function saveRecords() { return saveToStorage(STORAGE_RECORDS, state.records, '训练记录'); }
+const RECORD_LIMIT = 500;
+function capRecords(records) {
+  if (records.length <= RECORD_LIMIT) return records;
+  const removed = records.length - RECORD_LIMIT;
+  // 延迟弹出，避免被紧随其后的"保存成功"提示覆盖
+  setTimeout(() => showToast(`训练记录已达 ${RECORD_LIMIT} 条上限，最早的 ${removed} 条已移除，建议尽快在「设置 → 数据管理」导出完整备份`, 'warning'), 2600);
+  return records.slice(0, RECORD_LIMIT);
+}
 let lastSessionPersistAt = 0;
 function clearActiveSession() {
   try { localStorage.removeItem(STORAGE_SESSION); } catch {}
@@ -233,4 +241,4 @@ function restoreActiveSession() {
   return true;
 }
 
-export { $, $$, ANALYTICS_COLORS, APP_VERSION, DEFAULT_SECTION_ORDER, FOCUS_SOUND_TYPES, LAP_ERROR_REASONS, MOCK_MODULE_NAMES, MOCK_PACING_QUESTION_COUNTS, PRESETS, SECTION_QUESTION_COUNTS, SPEED_SCORE_TYPES, STORAGE_RECORDS, STORAGE_SETTINGS, TRACKING_CATEGORIES, clearActiveSession, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, normalizeModuleResults, normalizeRecords, normalizeText, normalizeTrainingMeta, persistActiveSession, restoreActiveSession, saveRecords, saveSettings, state, toNonNegativeInt, toPositiveInt, toScore };
+export { $, $$, ANALYTICS_COLORS, APP_VERSION, RECORD_LIMIT, capRecords, DEFAULT_SECTION_ORDER, FOCUS_SOUND_TYPES, LAP_ERROR_REASONS, MOCK_MODULE_NAMES, MOCK_PACING_QUESTION_COUNTS, PRESETS, SECTION_QUESTION_COUNTS, SPEED_SCORE_TYPES, STORAGE_RECORDS, STORAGE_SETTINGS, TRACKING_CATEGORIES, clearActiveSession, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, normalizeModuleResults, normalizeRecords, normalizeText, normalizeTrainingMeta, persistActiveSession, restoreActiveSession, saveRecords, saveSettings, state, toNonNegativeInt, toPositiveInt, toScore };

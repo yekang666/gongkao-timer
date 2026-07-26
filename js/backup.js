@@ -10,7 +10,7 @@ import { renderPresets, resetTimer } from './timer.js';
 import { showToast } from './ui.js';
 
 function normalizeImportedData(data) {
-  if (Array.isArray(data)) return { settings: buildSettingsSnapshot(), records: normalizeRecords(data).sort((a, b) => new Date(b.endedAt).getTime() - new Date(a.endedAt).getTime()).slice(0, 500) };
+  if (Array.isArray(data)) return { settings: buildSettingsSnapshot(), records: normalizeRecords(data).sort((a, b) => new Date(b.endedAt).getTime() - new Date(a.endedAt).getTime()).slice(0, 500), rawRecordCount: data.length };
   if (!data || typeof data !== 'object') throw new Error('文件格式不正确');
   const knownDataFields = ['settings', 'configuration', 'records', 'sectionDurations'];
   if (!knownDataFields.some(field => Object.prototype.hasOwnProperty.call(data, field))) throw new Error('文件中没有可恢复的设置或训练记录');
@@ -40,7 +40,7 @@ function normalizeImportedData(data) {
   mergedSettings.examCountdown = normalizeExamCountdown(importedSettings.examCountdown ?? mergedSettings.examCountdown);
   mergedSettings.sectionOrder = normalizeSectionOrder(importedSettings.sectionOrder || importedConfiguration.sectionOrder);
   const records = normalizeRecords(importedRecords).sort((a, b) => new Date(b.endedAt).getTime() - new Date(a.endedAt).getTime()).slice(0, 500);
-  return { settings: mergedSettings, records };
+  return { settings: mergedSettings, records, rawRecordCount: importedRecords.length };
 }
 
 function getRecordMergeKey(record) {
@@ -85,6 +85,7 @@ function buildImportPreview(rawData, normalized, fileName = '') {
     appVersion: rawData?.appVersion || '未标注',
     exportedAt: rawData?.exportedAt || '',
     recordCount: normalized.records.length,
+    truncatedCount: Math.max(0, (normalized.rawRecordCount || 0) - normalized.records.length),
     mergeableRecordCount: getMergeableRecordCount(normalized.records),
     hasSettings: Boolean(Object.keys(importedSettings).length || Object.keys(importedConfiguration).length),
     hasExamCountdown: Boolean(examCountdown.date),
@@ -106,7 +107,8 @@ function renderRestorePreview(preview) {
     ['答题顺序', preview.hasSectionOrder ? '包含' : '使用默认']
   ];
   $('#restorePreviewDetails').innerHTML = rows.map(([label, value]) => `<span><small>${escapeHTML(label)}</small><strong>${escapeHTML(value)}</strong></span>`).join('');
-  $('#restorePreviewWarning').innerHTML = `<strong>合并训练记录</strong>：预计新增 ${preview.mergeableRecordCount} 条，当前设置和已有记录不变。<br><strong>覆盖恢复</strong>：用备份中的设置和记录替换当前数据。`;
+  const truncatedNote = preview.truncatedCount > 0 ? `<br><strong>注意</strong>：备份共 ${preview.recordCount + preview.truncatedCount} 条记录，超过 500 条保存上限，恢复后只保留最新的 ${preview.recordCount} 条。` : '';
+  $('#restorePreviewWarning').innerHTML = `<strong>合并训练记录</strong>：预计新增 ${preview.mergeableRecordCount} 条，当前设置和已有记录不变。<br><strong>覆盖恢复</strong>：用备份中的设置和记录替换当前数据。${truncatedNote}`;
 }
 
 function saveImportedData(settings, records) {

@@ -19,9 +19,13 @@ $('#startBtn').addEventListener('click', startOrPause); $('#resetBtn').addEventL
 $('#lapBtn').addEventListener('click', recordLap); $('#undoLapBtn').addEventListener('click', undoLap); $('#timerDisplay').addEventListener('click', recordLap);
 $('#timerDisplay').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); recordLap(); } });
 document.addEventListener('keydown', handleGlobalShortcut);
+// iOS 不可靠触发 beforeunload：切后台 / 页面隐藏 / pagehide 时强制保存训练现场
+function persistBeforeLeave() { if (state.status === 'running') tick(true); persistActiveSession(true); }
 document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { persistBeforeLeave(); return; }
   if (state.status === 'running') tick();
 });
+window.addEventListener('pagehide', persistBeforeLeave);
 $('#confirmFinishBtn').addEventListener('click', confirmFinish);
 $('#cancelFinishBtn').addEventListener('click', () => { state.pendingTimed = null; $('#finishDialog').close(); resetFinishDialog(); render(); syncNativeVideoTime(true); });
 $$('#quantityChoiceWrap [data-quantity]').forEach(button => button.addEventListener('click', () => saveQuantitySession(Number(button.dataset.quantity))));

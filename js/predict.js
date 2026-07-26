@@ -2,6 +2,7 @@ import { getPeriodRecords } from './analytics.js';
 import { $, $$, MOCK_PACING_QUESTION_COUNTS, escapeHTML, normalizeModuleResults, saveSettings, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
 import { formatAccuracy } from './format.js';
 import { getOrderedSectionPresets, getSectionDurations } from './sections.js';
+import { showToast } from './ui.js';
 
 // 国考行测参考分值（官方未公布，采用民间流传的经典参考表，按 2024 改革后题量结构适配）。
 // 副省级 135 题恰好合计 100 分；地市级数量关系少 5 题，按比例折算回 100 分。
@@ -98,6 +99,82 @@ export function buildPrediction(records, plan, now = Date.now()) {
   return { modules, total: modules.reduce((sum, module) => sum + module.score, 0), pooledAccuracy };
 }
 
+// 各模块的现实正确率上限（公考经验值）：反解目标时不会推荐超过上限的正确率；
+// 如果用户当前已高于上限，则以当前水平为上限（只需保持）。
+const TARGET_ACCURACY_CAPS = { '资料分析': 0.95, '言语理解': 0.9, '判断推理': 0.92, '数量关系': 0.85, '政治理论': 0.9, '常识判断': 0.8 };
+
+export function getTargetScore() {
+  const value = toScore(state.settings.targetScore);
+  return value !== null && value > 0 ? value : null;
+}
+
+// 把目标总分反解为各模块的目标正确率：
+// 需要补的分数按「提升空间 × 完成率 × 分值杠杆」的容量比例分配（水位法），
+// 短板模块在绝对百分点上提得更多，高分值模块承担更多分数。
+export function buildTargetPlan(prediction, target) {
+  const withCaps = prediction.modules.map(module => {
+    const cap = Math.max(TARGET_ACCURACY_CAPS[module.name] ?? 0.9, module.accuracy);
+    return { ...module, cap, capacity: module.questions * module.completion * (cap - module.accuracy) * module.weight };
+  });
+  const totalCapacity = withCaps.reduce((sum, module) => sum + module.capacity, 0);
+  const delta = target - prediction.total;
+  const maxAchievable = withCaps.reduce((sum, m) => sum + m.questions * (m.completion * m.cap + (1 - m.completion) * PREDICT_GUESS_RATE) * m.weight, 0);
+  const maxFullSpeed = withCaps.reduce((sum, m) => sum + m.questions * m.cap * m.weight, 0);
+  const status = delta <= 0.05 ? 'met' : (delta > totalCapacity + 1e-9 ? 'unreachable' : 'plan');
+  const scale = status === 'plan' ? delta / totalCapacity : (status === 'unreachable' ? 1 : 0);
+  const modules = withCaps.map(module => {
+    const exact = module.accuracy + scale * (module.cap - module.accuracy);
+    const targetAccuracy = Math.min(module.cap, Math.ceil(exact * 100) / 100); // 向上取整到整数百分点，保证可达成
+    const deltaPp = Math.max(0, targetAccuracy - module.accuracy);
+    return { name: module.name, grade: module.grade, borrowed: module.borrowed, completion: module.completion, current: module.accuracy, cap: module.cap, target: targetAccuracy, deltaPp, keep: deltaPp < 0.005, targetScore: module.questions * (module.completion * targetAccuracy + (1 - module.completion) * PREDICT_GUESS_RATE) * module.weight };
+  });
+  return { status, delta, modules, achieved: modules.reduce((sum, m) => sum + m.targetScore, 0), maxAchievable, maxFullSpeed };
+}
+
+function formatPercent(value) { return `${Math.round(value * 100)}%`; }
+
+function renderTargetPlan(prediction) {
+  const container = $('#predictTargetResult');
+  const target = getTargetScore();
+  $('#targetScoreInput').value = target ?? '';
+  $('#clearTargetScoreBtn').classList.toggle('hidden', target === null);
+  if (!container) return;
+  if (target === null || !prediction) {
+    container.innerHTML = target !== null && !prediction ? '<p class="target-status muted">先积累一些带正确数的训练数据，再来生成模块目标。</p>' : '';
+    return;
+  }
+  const targetPlan = buildTargetPlan(prediction, target);
+  let statusHtml = '';
+  if (targetPlan.status === 'met') statusHtml = `<p class="target-status met">已达标：当前预测 ${formatPoint(prediction.total)} 分，超出目标 ${formatPoint(prediction.total - target)} 分，按下面的正确率保持即可。</p>`;
+  else if (targetPlan.status === 'unreachable') statusHtml = `<p class="target-status warning">目标偏高：按当前速度，即使各模块都到现实上限也只有约 ${formatPoint(targetPlan.maxAchievable)} 分${targetPlan.maxFullSpeed - targetPlan.maxAchievable > 0.5 ? `；若提速到全部答完可到约 ${formatPoint(targetPlan.maxFullSpeed)} 分，建议先补速度` : ''}。下面按上限给出目标。</p>`;
+  else statusHtml = `<p class="target-status">距目标还差 ${formatPoint(targetPlan.delta)} 分，按提升空间和分值分配到各模块如下，达成后预计 ${formatPoint(targetPlan.achieved)} 分。</p>`;
+  container.innerHTML = statusHtml + `<div class="target-list">${targetPlan.modules.map(module => {
+    const badge = module.keep
+      ? '<span class="target-delta keep">保持</span>'
+      : `<span class="target-delta">+${Math.max(1, Math.round(module.deltaPp * 100))} 个百分点</span>`;
+    const capNote = targetPlan.status === 'unreachable' && !module.keep ? '<small class="target-cap">已按上限</small>' : '';
+    return `<div class="target-row"><strong>${escapeHTML(module.name)}</strong><span class="target-path"><i>${formatPercent(module.current)}</i><b>→</b><em>${formatPercent(module.target)}</em></span>${badge}${capNote}</div>`;
+  }).join('')}</div><p class="target-note">目标正确率指答完部分的正确率（按当前速度估算完成度），已考虑未答完部分 25% 蒙对率。数量关系、常识判断等模块设有现实上限，不会推荐冲不切实际的正确率。</p>`;
+}
+
+function saveTargetScore() {
+  const raw = $('#targetScoreInput').value;
+  if (raw === '') { showToast('请输入 1 - 100 之间的目标分数', 'warning'); return; }
+  const value = toScore(raw);
+  if (value === null || value <= 0) { showToast('目标分数需在 1 - 100 之间', 'warning'); return; }
+  state.settings.targetScore = value;
+  if (!saveSettings()) return;
+  showToast(`目标分数已设为 ${formatPoint(value)} 分`);
+  renderPrediction();
+}
+
+function clearTargetScore() {
+  state.settings.targetScore = null;
+  if (!saveSettings()) return;
+  showToast('已清除目标分数');
+  renderPrediction();
+}
+
 function getRecentMockAverage(records) {
   const scored = records.filter(record => record.module === '行测模考' && toScore(record.score) !== null);
   if (!scored.length) return null;
@@ -134,12 +211,17 @@ export function renderPrediction(now = new Date()) {
     panel.innerHTML = '<div class="empty-state">完成几组带正确数的专项训练或模考模块复盘后，这里会给出预测分数</div>';
     $('#predictList').innerHTML = '';
     $('#predictAdvice').innerHTML = '';
+    renderTargetPlan(null);
     return;
   }
   const mockAverage = getRecentMockAverage(records);
-  const compareHtml = mockAverage !== null
+  const targetScore = getTargetScore();
+  const targetCells = targetScore !== null
+    ? `<span><small>目标分数</small><strong>${formatPoint(targetScore)}</strong></span><span><small>距离目标</small><strong class="${prediction.total >= targetScore ? 'target-ok' : 'target-gap'}">${prediction.total >= targetScore ? `已超出 ${formatPoint(prediction.total - targetScore)}` : `还差 ${formatPoint(targetScore - prediction.total)}`}</strong></span>`
+    : '';
+  const compareHtml = (mockAverage !== null
     ? `<span><small>近期模考均分</small><strong>${formatPoint(mockAverage)}</strong></span><span><small>预测与模考差</small><strong>${prediction.total >= mockAverage ? '+' : ''}${formatPoint(prediction.total - mockAverage)}</strong></span>`
-    : `<span><small>近期模考均分</small><strong>暂无</strong></span><span><small>提示</small><strong>做一次行测模考可对照校准</strong></span>`;
+    : `<span><small>近期模考均分</small><strong>暂无</strong></span><span><small>提示</small><strong>做一次行测模考可对照校准</strong></span>`) + targetCells;
   panel.innerHTML = `<div class="predict-score-card"><small>预测行测分数（${escapeHTML(plan.label)}）</small><strong>${formatPoint(prediction.total)}</strong><span>满分 100 · 综合正确率 ${formatAccuracy(Math.round(prediction.pooledAccuracy * 1000), 1000)}</span></div><div class="predict-compare">${compareHtml}</div>`;
   $('#predictList').innerHTML = prediction.modules.map(module => {
     const pressure = module.completion < 0.999;
@@ -149,6 +231,7 @@ export function renderPrediction(now = new Date()) {
   }).join('');
   const advice = buildAdvice(prediction);
   $('#predictAdvice').innerHTML = advice.length ? `<h4>提分参考</h4>${advice.map(text => `<p>${escapeHTML(text)}</p>`).join('')}` : '';
+  renderTargetPlan(prediction);
 }
 
 $('#predictLevelSwitch')?.addEventListener('click', event => {
@@ -158,3 +241,6 @@ $('#predictLevelSwitch')?.addEventListener('click', event => {
   saveSettings();
   renderPrediction();
 });
+$('#saveTargetScoreBtn')?.addEventListener('click', saveTargetScore);
+$('#targetScoreInput')?.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); saveTargetScore(); } });
+$('#clearTargetScoreBtn')?.addEventListener('click', clearTargetScore);

@@ -1,4 +1,5 @@
-import { $, $$, LAP_ERROR_REASONS, escapeAttribute, normalizeLapReviews, normalizeLaps, saveRecords, state, toScore } from './core.js';
+import { $, $$, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, saveRecords, state, toScore } from './core.js';
+import { addCustomLapReason, getAllLapReasons } from './reasons.js';
 import { formatClock, formatScore } from './format.js';
 import { renderStats } from './stats.js';
 import { renderLapPanel, renderPacingStatus } from './timer.js';
@@ -52,7 +53,7 @@ function getLapReviewCounts(reviews, lapCount) {
 function renderLapReviewInsights(stats) {
   const counts = getLapReviewCounts(state.lapReviewDraft, stats.values.length);
   $('#lapReviewProgress').textContent = `${counts.reviewed} / ${stats.values.length}`;
-  const reasonSummary = LAP_ERROR_REASONS.filter(reason => counts.reasons[reason]).map(reason => `${reason} ${counts.reasons[reason]} 题`).join(' · ');
+  const reasonSummary = [...new Set([...getAllLapReasons(), ...Object.keys(counts.reasons)])].filter(reason => counts.reasons[reason]).map(reason => `${reason} ${counts.reasons[reason]} 题`).join(' · ');
   const costlyWrong = stats.values.map((duration, index) => ({ duration, index, review: state.lapReviewDraft[index] })).filter(item => item.review?.status === 'wrong' && item.duration > stats.average);
   const resultSummary = counts.reviewed ? `正确 ${counts.correct} · 错误 ${counts.wrong} · 跳过 ${counts.skipped}` : '尚未标记，可直接关闭后稍后补录';
   const priorityQuestions = costlyWrong.slice(0, 8).map(item => `第 ${item.index + 1} 题`).join('、');
@@ -67,7 +68,9 @@ function renderLapReviewList(record, stats) {
     const costlyWrong = review.status === 'wrong' && duration > stats.average;
     const marker = costlyWrong ? '<em class="costly">高耗错题</em>' : (index === stats.slowestIndex ? '<em>最慢</em>' : (duration === stats.fastest ? '<em class="fast">最快</em>' : ''));
     const statusButtons = [['correct', '✓ 正确'], ['wrong', '× 错误'], ['skipped', '— 跳过']].map(([status, label]) => `<button type="button" data-review-status="${status}" aria-pressed="${review.status === status}">${label}</button>`).join('');
-    const reasonButtons = LAP_ERROR_REASONS.map(reason => `<button type="button" data-review-reason="${reason}" aria-pressed="${review.reason === reason}">${reason}</button>`).join('');
+    const reasonList = getAllLapReasons();
+    const reasonOptions = review.reason && !reasonList.includes(review.reason) ? [...reasonList, review.reason] : reasonList;
+    const reasonButtons = reasonOptions.map(reason => `<button type="button" data-review-reason="${escapeAttribute(reason)}" aria-pressed="${review.reason === reason}">${escapeHTML(reason)}</button>`).join('') + '<button type="button" class="lap-reason-add" data-review-add-reason aria-label="添加自定义错因">＋ 自定义</button>';
     const fields = review.status ? `<div class="lap-review-fields">${review.status === 'wrong' ? `<div class="lap-reason-choices" aria-label="第 ${index + 1} 题错因"><small>错因（可选）</small><div>${reasonButtons}</div></div>` : ''}<label><span>本题备注（可选）</span><input data-review-note type="text" maxlength="120" value="${escapeAttribute(review.note)}" placeholder="记录思路、陷阱或下次注意事项"></label></div>` : '';
     return `<article class="lap-review-card${costlyWrong ? ' costly-wrong' : ''}" data-review-index="${index}"><div class="lap-detail-row"><span>第 ${index + 1} 题</span><div><i style="width:${ratio}%"></i></div><strong>${formatClock(duration).slice(3)}</strong>${marker}</div><div class="lap-status-choices" aria-label="第 ${index + 1} 题作答结果">${statusButtons}</div>${fields}</article>`;
   }).join('');
@@ -103,11 +106,22 @@ function closeLapDetail() {
 }
 
 function updateLapReviewFromClick(event) {
-  const button = event.target.closest('[data-review-status],[data-review-reason]'); if (!button) return;
+  const button = event.target.closest('[data-review-status],[data-review-reason],[data-review-add-reason]'); if (!button) return;
   const card = button.closest('[data-review-index]'), index = Number(card?.dataset.reviewIndex);
   const record = state.records.find(item => item.id === state.reviewingRecordId), stats = getLapStats(record?.laps);
   if (!Number.isInteger(index) || !record || !stats) return;
   const review = getLapReviewDraftItem(index);
+  if ('reviewAddReason' in button.dataset) {
+    if (review.status !== 'wrong') return;
+    const rawName = prompt('输入自定义错因（最多 12 字），会保存为常用选项：', '');
+    if (rawName === null) return;
+    const result = addCustomLapReason(rawName);
+    if (result.error) { showToast(result.error, 'warning'); return; }
+    review.reason = result.name;
+    state.lapReviewDraft[index] = review;
+    const scrollTop = $('#lapDetailList').scrollTop; renderLapReviewList(record, stats); $('#lapDetailList').scrollTop = scrollTop;
+    return;
+  }
   if (button.dataset.reviewStatus) {
     const status = button.dataset.reviewStatus;
     if (review.status === status) {

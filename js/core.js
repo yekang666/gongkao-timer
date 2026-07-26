@@ -19,7 +19,7 @@ function $$(selector) { return [...document.querySelectorAll(selector)]; }
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
 const STORAGE_SESSION = 'examTimer.activeSession.v1';
-const APP_VERSION = 'v2.22.0';
+const APP_VERSION = 'v2.23.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -27,7 +27,7 @@ const MOCK_MODULE_NAMES = PRESETS.section.map(preset => preset.name);
 const TRAINING_DIFFICULTIES = ['简单', '正常', '较难'];
 const SPEED_SCORE_TYPES = new Set(PRESETS.mock.map(preset => preset.name));
 const LAP_REVIEW_STATUSES = ['correct', 'wrong', 'skipped'];
-const LAP_ERROR_REASONS = ['知识盲区', '理解偏差', '计算失误', '方法不优', '时间不足'];
+const LAP_ERROR_REASONS = ['知识盲区', '理解偏差', '计算失误', '方法不优', '时间不足', '审题不清', '选项纠结', '陷阱失误', '蒙错'];
 const DEFAULT_SECTION_ORDER = PRESETS.section.map(preset => preset.name);
 const ANALYTICS_COLORS = ['#2e6754', '#c46a20', '#54799a', '#8a6c9b', '#b83b35', '#638467', '#a46d4c', '#467b86', '#7b7791'];
 const FOCUS_SOUND_TYPES = {
@@ -84,7 +84,7 @@ function normalizeLapReviews(reviews, lapCount = 500) {
   const normalized = reviews.slice(0, Math.max(0, lapCount)).map(review => {
     if (!review || typeof review !== 'object') return null;
     const status = LAP_REVIEW_STATUSES.includes(review.status) ? review.status : null;
-    const reason = status === 'wrong' && LAP_ERROR_REASONS.includes(review.reason) ? review.reason : null;
+    const reason = status === 'wrong' ? (LAP_ERROR_REASONS.includes(review.reason) ? review.reason : normalizeText(review.reason, 16) || null) : null;
     const note = normalizeText(review.note, 120);
     return status || reason || note ? { status, reason, note } : null;
   });

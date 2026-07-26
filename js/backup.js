@@ -1,6 +1,7 @@
 import { normalizeFocusSoundSettings } from './audio.js';
 import { $, PRESETS, STORAGE_RECORDS, STORAGE_SETTINGS, escapeHTML, normalizeRecords, saveRecords, state } from './core.js';
 import { normalizeExamCountdown } from './exam.js';
+import { renderCustomReasonSettings } from './reasons.js';
 import { render } from './render.js';
 import { applyCustomDurations, normalizeSectionOrder, renderSectionTimeSettings } from './sections.js';
 import { applySettings, buildSettingsSnapshot, formatExportDateTime, renderDataManagementSummary, renderStats } from './stats.js';
@@ -136,7 +137,7 @@ function restoreImportedData(data) {
   state.settings = nextSettings; state.records = nextRecords;
   applyCustomDurations();
   if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; resetTimer(false); }
-  applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); render(); renderDataManagementSummary();
+  applySettings(); renderSectionTimeSettings(); renderCustomReasonSettings(); renderPresets(); renderStats(); render(); renderDataManagementSummary();
   return true;
 }
 

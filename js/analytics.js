@@ -1,4 +1,4 @@
-import { $, $$, ANALYTICS_COLORS, LAP_ERROR_REASONS, MOCK_PACING_QUESTION_COUNTS, PRESETS, SECTION_QUESTION_COUNTS, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, normalizeModuleResults, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
+import { $, $$, ANALYTICS_COLORS, MOCK_PACING_QUESTION_COUNTS, PRESETS, SECTION_QUESTION_COUNTS, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, normalizeModuleResults, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
 import { formatAccuracy, formatClock, formatDuration, formatScore } from './format.js';
 import { getOrderedSectionPresets } from './sections.js';
 import { renderStats } from './stats.js';
@@ -204,12 +204,12 @@ function renderModuleBaselines(now) {
 }
 
 function renderReasonTrends(now) {
-  const records = getPeriodRecords(state.analyticsDays, 0, now), counts = Object.fromEntries(LAP_ERROR_REASONS.map(reason => [reason, 0]));
+  const records = getPeriodRecords(state.analyticsDays, 0, now), counts = {};
   let wrong = 0;
   records.forEach(record => normalizeLapReviews(record.lapReviews, normalizeLaps(record.laps).length).forEach(review => {
-    if (review?.status !== 'wrong') return; wrong += 1; if (review.reason) counts[review.reason] += 1;
+    if (review?.status !== 'wrong') return; wrong += 1; if (review.reason) counts[review.reason] = (counts[review.reason] || 0) + 1;
   }));
-  const ranked = LAP_ERROR_REASONS.filter(reason => counts[reason]).sort((a, b) => counts[b] - counts[a]), max = Math.max(...ranked.map(reason => counts[reason]), 1), reasonTotal = ranked.reduce((sum, reason) => sum + counts[reason], 0);
+  const ranked = Object.keys(counts).sort((a, b) => counts[b] - counts[a]), max = Math.max(...ranked.map(reason => counts[reason]), 1), reasonTotal = ranked.reduce((sum, reason) => sum + counts[reason], 0);
   $('#reasonTrendList').innerHTML = ranked.length ? `<p class="reason-insight">最常见错因：<strong>${ranked[0]}</strong> · ${counts[ranked[0]]} 题</p>${ranked.map(reason => `<div class="reason-trend-row"><span>${reason}</span><div><i style="width:${counts[reason] / max * 100}%"></i></div><strong>${counts[reason]} 题 · ${Math.round(counts[reason] / reasonTotal * 100)}%</strong></div>`).join('')}` : `<div class="analytics-empty">${wrong ? `已标记 ${wrong} 道错题，但尚未填写具体错因。` : '完成逐题错误标记后，这里会汇总具体错因。'}</div>`;
 }
 

@@ -1240,3 +1240,16 @@ body.dark #statsDrawer .stats-view-tabs button[aria-pressed="true"]:active {
 body.dark .predict-score-card{background:linear-gradient(135deg,#2e6754 0%,#1d3a30 100%)}
 body.dark .predict-badge.mid{background:color-mix(in srgb,#54799a 18%,var(--surface))}
 body.dark .predict-advice{background:color-mix(in srgb,var(--accent) 14%,transparent)}
+
+/* ===== 自定义错因 ===== */
+.custom-reason-add{display:flex;align-items:center;gap:8px}
+.custom-reason-add input{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);font:inherit;font-size:13px}
+.custom-reason-add output{color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.custom-reason-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.custom-reason-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 5px 4px 10px;border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:999px;background:var(--accent-2);color:var(--accent);font-size:12px}
+.custom-reason-chip b{font-weight:600}
+.custom-reason-chip button{width:18px;height:18px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:transparent;color:inherit;font-size:13px;line-height:1;cursor:pointer}
+.custom-reason-chip button:hover{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+.custom-reason-empty{color:var(--muted);font-size:12px}
+.lap-reason-add{border-style:dashed !important;color:var(--accent) !important}
+body.dark .custom-reason-chip{background:color-mix(in srgb,var(--accent) 20%,var(--surface))}

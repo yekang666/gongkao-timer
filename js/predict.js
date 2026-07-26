@@ -124,7 +124,8 @@ export function buildTargetPlan(prediction, target) {
   const scale = status === 'plan' ? delta / totalCapacity : (status === 'unreachable' ? 1 : 0);
   const modules = withCaps.map(module => {
     const exact = module.accuracy + scale * (module.cap - module.accuracy);
-    const targetAccuracy = Math.min(module.cap, Math.ceil(exact * 100) / 100); // 向上取整到整数百分点，保证可达成
+    // 向上取整到整数百分点保证可达成；已达标时直接用当前值，避免取整造成多余的"+1"
+    const targetAccuracy = status === 'met' ? module.accuracy : Math.min(module.cap, Math.ceil(exact * 100) / 100);
     const deltaPp = Math.max(0, targetAccuracy - module.accuracy);
     return { name: module.name, grade: module.grade, borrowed: module.borrowed, completion: module.completion, current: module.accuracy, cap: module.cap, target: targetAccuracy, deltaPp, keep: deltaPp < 0.005, targetScore: module.questions * (module.completion * targetAccuracy + (1 - module.completion) * PREDICT_GUESS_RATE) * module.weight };
   });

@@ -1,6 +1,7 @@
 import { openSettingsDrawer, openStatsDrawer, setSettingsView, setStatsView } from './analytics.js';
 import { maybeResumeFocusSound, setFocusSoundType, setFocusSoundVolume, stopAlertKeepAlive, stopFocusSound, toggleFocusSound, warmUpAlertSound } from './audio.js';
 import { cancelRestoreImport, confirmRestoreImport, importDataFile } from './backup.js';
+import { applyLaunchShortcut } from './launch.js';
 import { $, $$, persistActiveSession, restoreActiveSession, saveRecords, saveSettings, state } from './core.js';
 import { checkInExamCountdown, openExamCountdownSettings, saveExamCountdownSettings } from './exam.js';
 import { editMockReport, finishMockModuleReview, finishTrainingMeta, openReportLapReview, returnFromMockModuleReview, returnToTrainingPreviousStep } from './mock.js';
@@ -108,6 +109,7 @@ window.addEventListener('beforeunload', () => { if (state.status === 'running') 
 applyCustomDurations();
 const recoveredActiveSession = restoreActiveSession();
 applySettings(); renderSectionTimeSettings(); renderPresets(); renderStats(); renderDataManagementSummary(); render();
+applyLaunchShortcut(recoveredActiveSession);
 if (recoveredActiveSession) setTimeout(() => showToast('已恢复上次未完成的训练，当前处于暂停状态'), 120);
 
 export {};

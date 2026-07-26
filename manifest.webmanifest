@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "公考刷题计时器",
   "short_name": "公考计时器",
   "description": "本地优先的公考刷题计时与复盘工具",
@@ -19,6 +19,36 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "行测模考",
+      "short_name": "行测模考",
+      "description": "直接进入 120 分钟行测整卷模考",
+      "url": "./?mode=mock&preset=xingce",
+      "icons": [{ "src": "assets/app-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "资料分析专项",
+      "short_name": "资料分析",
+      "description": "直接进入资料分析专项计时",
+      "url": "./?mode=section&preset=ziliao",
+      "icons": [{ "src": "assets/app-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "自由测速",
+      "short_name": "自由测速",
+      "description": "打开即用的正计时逐题测速",
+      "url": "./?mode=single",
+      "icons": [{ "src": "assets/app-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "数据复盘",
+      "short_name": "数据复盘",
+      "description": "查看训练趋势、预测分数和错因统计",
+      "url": "./?view=stats",
+      "icons": [{ "src": "assets/app-icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

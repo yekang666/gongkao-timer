@@ -227,4 +227,4 @@ function saveTimedCorrectSession() {
   state.pendingTimed = null; beginTimedMeta(result, { kind: 'finish' });
 }
 
-export { confirmFinish, getAccuracyTotals, getScoreAverage, hasAccuracy, openCorrectInputDialog, recordLap, renderLapPanel, renderPacingStatus, renderPresets, requestFinish, resetTimer, saveQuantitySession, setMode, startOrPause, tick, undoLap };
+export { confirmFinish, getAccuracyTotals, getScoreAverage, hasAccuracy, openCorrectInputDialog, recordLap, renderLapPanel, renderPacingStatus, renderPresets, requestFinish, resetTimer, saveQuantitySession, selectPreset, setMode, startOrPause, tick, undoLap };

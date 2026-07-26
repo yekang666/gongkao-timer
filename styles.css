@@ -1295,3 +1295,9 @@ body.dark .target-row{background:color-mix(in srgb,var(--surface-2) 70%,transpar
 .backup-banner-actions{display:flex;gap:8px;flex-shrink:0}
 body.dark .backup-banner{background:color-mix(in srgb,var(--warning) 14%,var(--bg))}
 @media(max-width:640px){.backup-banner{flex-wrap:wrap;padding:10px 16px}.backup-banner-text{flex:1 1 100%;order:1}.backup-banner-icon{order:0}.backup-banner-actions{order:2;width:100%;justify-content:flex-end}}
+
+/* ===== 打标界面内的自定义错因删除 ===== */
+.lap-reason-custom-wrap{display:inline-flex;align-items:stretch}
+.lap-reason-custom-wrap [data-review-reason]{border-top-right-radius:0;border-bottom-right-radius:0;border-right:0}
+.lap-reason-remove{padding:5px 6px;font-size:10px;line-height:1;border:1px solid var(--line);border-top-left-radius:0;border-bottom-left-radius:0;background:var(--surface);color:var(--muted);cursor:pointer}
+.lap-reason-remove:hover{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 40%,var(--line));background:color-mix(in srgb,var(--danger) 8%,var(--surface))}

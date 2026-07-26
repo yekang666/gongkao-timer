@@ -1,6 +1,7 @@
 import { normalizeFocusSoundSettings } from './audio.js';
 import { $, PRESETS, STORAGE_RECORDS, STORAGE_SETTINGS, escapeHTML, normalizeRecords, saveRecords, state } from './core.js';
 import { normalizeExamCountdown } from './exam.js';
+import { markBackupDone, syncBackupReminderUi } from './backup-reminder.js';
 import { renderCustomReasonSettings } from './reasons.js';
 import { render } from './render.js';
 import { applyCustomDurations, normalizeSectionOrder, renderSectionTimeSettings } from './sections.js';
@@ -138,6 +139,8 @@ function restoreImportedData(data) {
   applyCustomDurations();
   if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; resetTimer(false); }
   applySettings(); renderSectionTimeSettings(); renderCustomReasonSettings(); renderPresets(); renderStats(); render(); renderDataManagementSummary();
+  markBackupDone(); // 覆盖恢复后，当前数据与备份文件一致，视为已备份
+  syncBackupReminderUi();
   return true;
 }
 

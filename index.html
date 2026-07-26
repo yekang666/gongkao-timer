@@ -20,7 +20,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><img src="assets/app-icon.png" alt=""></span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.24.1</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.25.0</span></div><small>训练工作台</small></div>
       </div>
       <div class="exam-countdown" id="examCountdown">
         <button class="exam-countdown-main" id="examCountdownOpenBtn" type="button" title="设置考试倒计时">
@@ -36,6 +36,15 @@
         <button class="icon-button labeled" id="settingsBtn" type="button" title="设置" aria-label="打开设置"><span class="icon-glyph" aria-hidden="true">⚙</span><span class="icon-label">设置</span></button>
       </div>
     </header>
+
+    <div class="backup-banner hidden" id="backupBanner" role="status">
+      <span class="backup-banner-icon" aria-hidden="true">⛁</span>
+      <span class="backup-banner-text" id="backupBannerText"></span>
+      <div class="backup-banner-actions">
+        <button class="primary compact-button" id="backupNowBtn" type="button">立即备份</button>
+        <button class="secondary compact-button" id="backupLaterBtn" type="button">3 天后再提</button>
+      </div>
+    </div>
 
     <main class="workspace">
       <nav class="mode-tabs" aria-label="计时模式">
@@ -137,7 +146,8 @@
         <div class="setting-block shortcut-settings"><span><strong>快捷键列表</strong><small>训练时不用移动鼠标，常用操作一键完成。</small></span><div class="shortcut-list" aria-label="全局快捷键列表"><span><kbd>S</kbd><strong>开始 / 暂停 / 继续</strong></span><span><kbd>Space</kbd><strong>完成一题打点</strong></span><span><kbd>F</kbd><strong>结束并进入复盘</strong></span><span><kbd>R</kbd><strong>重置本轮计时</strong></span><span><kbd>U</kbd><strong>撤销上一题打点</strong></span><span><kbd>D</kbd><strong>打开数据复盘</strong></span><span><kbd>G</kbd><strong>打开设置</strong></span><span><kbd>?</kbd><strong>查看快捷键</strong></span></div><p class="shortcut-note">快捷键只在当前页面处于打开状态时生效，避免影响其他应用。</p></div>
       </section>
       <section class="settings-panel hidden" data-settings-panel="data">
-        <div class="setting-block data-tools"><span><strong>备份与恢复</strong><small>备份包含全部设置、专项时间、答题顺序和复盘记录；恢复前会先预览。</small></span><div class="data-health" aria-label="数据概览"><span><small>已保存记录</small><strong id="dataRecordCount">0 条</strong></span><span><small>备份内容</small><strong>设置 + 记录</strong></span><span><small>恢复方式</small><strong>先预览</strong></span></div><div class="data-actions"><button class="secondary" id="exportDataBtn" type="button">下载完整备份</button><button class="primary" id="importDataBtn" type="button">恢复备份</button><button class="secondary" id="exportCsvBtn" type="button">导出记录表</button><input class="hidden" id="importDataInput" type="file" accept=".gktimer,.json,application/json"></div></div>
+        <div class="setting-block data-tools"><span><strong>备份与恢复</strong><small>备份包含全部设置、专项时间、答题顺序和复盘记录；恢复前会先预览。</small></span><div class="data-health" aria-label="数据概览"><span><small>已保存记录</small><strong id="dataRecordCount">0 条</strong></span><span><small>上次备份</small><strong id="lastBackupInfo">从未备份</strong></span><span><small>恢复方式</small><strong>先预览</strong></span></div><div class="data-actions"><button class="secondary" id="exportDataBtn" type="button">下载完整备份</button><button class="primary" id="importDataBtn" type="button">恢复备份</button><button class="secondary" id="exportCsvBtn" type="button">导出记录表</button><input class="hidden" id="importDataInput" type="file" accept=".gktimer,.json,application/json"></div></div>
+        <label class="setting-row"><span><strong>备份提醒</strong><small>从未备份或距上次备份超过 7 天且有新记录时，在首页顶部提醒。</small></span><input id="backupReminderToggle" type="checkbox" checked></label>
         <div class="privacy-note"><strong>数据仅保存在当前设备</strong><p>备份由你自己保存；恢复只会写回本设备，不会上传。</p></div>
       </section>
     </div>

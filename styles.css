@@ -1287,3 +1287,11 @@ body.dark .target-row{background:color-mix(in srgb,var(--surface-2) 70%,transpar
 .icon-button.labeled:hover .icon-label{color:var(--accent)}
 @media(max-width:640px){.icon-button.labeled{min-width:48px;height:44px;padding:3px 7px}.icon-button.labeled .icon-glyph{font-size:14px}}
 @media(max-width:360px){.icon-button.labeled{min-width:42px;padding:3px 5px}.icon-button.labeled .icon-label{letter-spacing:0}}
+
+/* ===== 备份提醒横幅 ===== */
+.backup-banner{display:flex;align-items:center;gap:12px;margin:0;padding:10px clamp(20px,4vw,56px);background:color-mix(in srgb,var(--warning) 10%,var(--bg));border-bottom:1px solid color-mix(in srgb,var(--warning) 35%,var(--line));font-size:13px;line-height:1.5}
+.backup-banner-icon{font-size:16px;color:var(--warning)}
+.backup-banner-text{flex:1;color:var(--text)}
+.backup-banner-actions{display:flex;gap:8px;flex-shrink:0}
+body.dark .backup-banner{background:color-mix(in srgb,var(--warning) 14%,var(--bg))}
+@media(max-width:640px){.backup-banner{flex-wrap:wrap;padding:10px 16px}.backup-banner-text{flex:1 1 100%;order:1}.backup-banner-icon{order:0}.backup-banner-actions{order:2;width:100%;justify-content:flex-end}}

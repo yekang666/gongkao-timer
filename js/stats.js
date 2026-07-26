@@ -1,4 +1,5 @@
 import { getHistoryBenchmark, getModuleAnalytics, openSettingsDrawer, openStatsDrawer, renderPersonalAnalytics } from './analytics.js';
+import { markBackupDone, renderLastBackupInfo } from './backup-reminder.js';
 import { focusAudio, normalizeFocusSoundSettings, stopFocusSound, syncFocusSoundUi } from './audio.js';
 import { $, $$, APP_VERSION, MOCK_MODULE_NAMES, SPEED_SCORE_TYPES, STORAGE_RECORDS, STORAGE_SETTINGS, TRACKING_CATEGORIES, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, normalizeModuleResults, normalizeRecords, saveRecords, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
 import { normalizeExamCountdown, renderExamCountdown } from './exam.js';
@@ -169,11 +170,13 @@ function downloadBlob(blob, filename) {
 function renderDataManagementSummary() {
   const count = $('#dataRecordCount');
   if (count) count.textContent = `${state.records.length} 条`;
+  renderLastBackupInfo();
 }
 
 function exportData() {
   const blob = new Blob([JSON.stringify(buildExportData(), null, 2)], { type: 'application/json' });
   downloadBlob(blob, `公考计时器完整备份-${getDateStamp()}.gktimer`);
+  markBackupDone();
   showToast('完整备份已下载');
 }
 

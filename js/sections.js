@@ -162,4 +162,4 @@ function finishSectionSort(cancelled = false) {
   renderPresets(); render(); renderPacingOrderNote(); if (saved) showToast('模考节奏顺序已保存');
 }
 
-export { applyCustomDurations, beginSectionSort, finishSectionSort, getOrderedSectionPresets, getSectionDurationSnapshot, getSectionOrderSnapshot, moveSectionCard, moveSectionSort, normalizeSectionOrder, renderSectionTimeSettings, saveSectionTimes, sectionSort };
+export { applyCustomDurations, beginSectionSort, getSectionDurations, finishSectionSort, getOrderedSectionPresets, getSectionDurationSnapshot, getSectionOrderSnapshot, moveSectionCard, moveSectionSort, normalizeSectionOrder, renderSectionTimeSettings, saveSectionTimes, sectionSort };

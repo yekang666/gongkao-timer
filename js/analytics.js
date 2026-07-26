@@ -244,7 +244,7 @@ function renderPersonalAnalytics(now) {
 }
 
 function setStatsView(view, shouldScroll = true) {
-  const views = ['overview', 'trend', 'baseline', 'reasons', 'history'];
+  const views = ['overview', 'trend', 'baseline', 'predict', 'reasons', 'history'];
   state.statsView = views.includes(view) ? view : 'overview';
   $$('[data-stats-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.statsView === state.statsView)));
   $$('[data-stats-panel]').forEach(panel => panel.classList.toggle('hidden', panel.dataset.statsPanel !== state.statsView));
@@ -262,4 +262,4 @@ function setSettingsView(view, shouldScroll = true) {
 function openStatsDrawer() { renderStats(); setStatsView(state.statsView, false); openDrawer($('#statsDrawer')); }
 function openSettingsDrawer(view = state.settingsView) { setSettingsView(view, false); openDrawer($('#settingsDrawer')); }
 
-export { getHistoryBenchmark, getModuleAnalytics, openSettingsDrawer, openStatsDrawer, renderPersonalAnalytics, setSettingsView, setStatsView };
+export { getHistoryBenchmark, getModuleAnalytics, getPeriodRecords, openSettingsDrawer, openStatsDrawer, renderPersonalAnalytics, setSettingsView, setStatsView };

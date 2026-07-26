@@ -4,6 +4,7 @@ import { $, $$, APP_VERSION, MOCK_MODULE_NAMES, SPEED_SCORE_TYPES, STORAGE_RECOR
 import { normalizeExamCountdown, renderExamCountdown } from './exam.js';
 import { formatAccuracy, formatClock, formatDuration, formatScore } from './format.js';
 import { openMockReport, returnToTrainingPreviousStep } from './mock.js';
+import { renderPrediction } from './predict.js';
 import { getLapReviewCounts, openLapDetail, render } from './render.js';
 import { getSectionDurationSnapshot, getSectionOrderSnapshot } from './sections.js';
 import { getAccuracyTotals, getScoreAverage, hasAccuracy, recordLap, requestFinish, resetTimer, startOrPause, undoLap } from './timer.js';
@@ -68,6 +69,7 @@ function renderStats() {
   $('#historyTabCount').textContent = state.records.length > 99 ? '99+' : String(state.records.length);
   $('#todayDuration').textContent = formatDuration(today.reduce((n,r)=>n+r.duration,0)); $('#weekCount').textContent = `${week.length} 次`; $('#weekDuration').textContent = formatDuration(week.reduce((n,r)=>n+r.duration,0)); $('#weekAccuracy').textContent = formatAccuracy(weekAccuracy.correct, weekAccuracy.questions); $('#weekScore').textContent = formatScore(weekScore);
   renderPersonalAnalytics(now);
+  renderPrediction(now);
   const modules = TRACKING_CATEGORIES; $('#moduleStats').innerHTML = modules.map(name => {
     const analytics = getModuleAnalytics(state.records, name), directRows = state.records.filter(r => r.module === name), timedRows = analytics.rows.filter(row => Number.isFinite(row.duration) && row.duration > 0), avg = timedRows.length ? timedRows.reduce((n,r)=>n+r.duration,0)/timedRows.length : 0;
     const avgPerQuestion = analytics.pace || 0;

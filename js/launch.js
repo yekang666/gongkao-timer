@@ -16,15 +16,30 @@ const PRESET_SLUGS = {
   changshi: '常识判断'
 };
 
+function isStandaloneApp() {
+  try { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; } catch { return false; }
+}
+
 export function applyLaunchShortcut(recoveredSession) {
+  const search = window.location.search;
   let params;
-  try { params = new URLSearchParams(window.location.search); } catch { return; }
+  try { params = new URLSearchParams(search); } catch { return; }
   const mode = params.get('mode');
   const presetSlug = params.get('preset');
   const view = params.get('view');
   if (!mode && !view) return;
-  // 清掉查询参数，避免刷新页面时重复触发
-  try { history.replaceState(null, '', window.location.pathname); } catch {}
+  if (isStandaloneApp()) {
+    // 已安装的 App 里由 manifest shortcuts 进入：清掉参数即可
+    try { history.replaceState(null, '', window.location.pathname); } catch {}
+  } else {
+    // 浏览器模式保留参数：iOS 不支持长按快捷菜单，用户可以把带参数的网址
+    // 「添加到主屏幕」或收藏，做成单独的直达图标。
+    // 用 sessionStorage 防止同一个标签页刷新时被反复拉回参数指定的模式。
+    try {
+      if (sessionStorage.getItem('examTimer.launchApplied') === search) return;
+      sessionStorage.setItem('examTimer.launchApplied', search);
+    } catch {}
+  }
   if (view === 'stats') openStatsDrawer();
   // 有恢复的未完成训练时不切换模式，保护未保存的进度（setMode 也会弹确认框，启动时不该出现）
   if (recoveredSession) return;

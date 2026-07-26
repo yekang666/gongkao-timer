@@ -6,7 +6,7 @@
 
 在线使用：[公考刷题计时器](https://gongkao-timer.20041108.xyz)
 
-当前版本：v2.26.0
+当前版本：v2.26.1
 
 ---
 
@@ -301,7 +301,17 @@
 - 自由测速：打开即用的正计时逐题测速。
 - 数据复盘：直接打开训练数据面板。
 
-也可以用带参数的链接直达，例如 `?mode=section&preset=ziliao` 进入资料分析专项。如果上次有未完成的训练，会优先恢复训练现场，不会被快捷方式覆盖。iOS 的主屏幕网页图标暂不支持长按快捷菜单。
+也可以用带参数的链接直达，例如 `?mode=section&preset=ziliao` 进入资料分析专项。如果上次有未完成的训练，会优先恢复训练现场，不会被快捷方式覆盖。
+
+#### iOS 用户请这样做
+
+iOS 的主屏幕网页图标不支持长按快捷菜单（系统限制），但可以给常用模式各建一个独立图标：
+
+1. 用 Safari 打开带参数的直达网址，例如资料分析专项：`https://gongkao-timer.20041108.xyz/?mode=section&preset=ziliao`
+2. 点击底部分享按钮 → 「添加到主屏幕」。
+3. 改个名字（如「资料分析」）后添加，以后点这个图标就直接进入对应模式。
+
+常用直达参数：行测模考 `?mode=mock&preset=xingce`；申论国考 `?mode=mock&preset=shenlun-guo`；言语理解 `?mode=section&preset=yanyu`；判断推理 `?mode=section&preset=panduan`；数量关系 `?mode=section&preset=shuliang`；自由测速 `?mode=single`；数据复盘 `?view=stats`。
 
 ---
 
@@ -395,7 +405,7 @@
 
 ## 更新记录
 
-当前版本：v2.26.0
+当前版本：v2.26.1
 
 近期重点更新：
 

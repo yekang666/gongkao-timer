@@ -17,7 +17,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
 const STORAGE_SESSION = 'examTimer.activeSession.v1';
-const APP_VERSION = 'v2.19.0';
+const APP_VERSION = 'v2.20.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -947,6 +947,74 @@ function fromDateTimeLocalValue(value) {
   if (!value) return null;
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function openRecordCreator() {
+  const form = $('#recordCreateForm');
+  form.reset();
+  $('#createRecordMode').value = state.mode;
+  $('#createRecordEndedAt').value = toDateTimeLocalValue(new Date().toISOString());
+  $('#createRecordSeconds').value = '0';
+  setDifficultyChoice('createRecordDifficultyChoices', null);
+  $('#recordCreateDialog').showModal();
+  $('#createRecordModule').focus();
+}
+
+function closeRecordCreator() {
+  const dialog = $('#recordCreateDialog');
+  if (dialog.open) dialog.close();
+}
+
+function saveRecordCreator() {
+  const moduleName = normalizeText($('#createRecordModule').value, 80);
+  if (!moduleName) { showToast('请填写题型或模块'); $('#createRecordModule').focus(); return; }
+  const mode = $('#createRecordMode').value;
+  if (!['mock', 'section', 'single'].includes(mode)) { showToast('请选择训练模式'); $('#createRecordMode').focus(); return; }
+  const minutes = Math.floor(Number($('#createRecordMinutes').value || 0));
+  const seconds = Math.floor(Number($('#createRecordSeconds').value || 0));
+  if (!Number.isFinite(minutes) || !Number.isFinite(seconds) || minutes < 0 || seconds < 0 || seconds > 59) {
+    showToast('用时格式不正确'); $('#createRecordMinutes').focus(); return;
+  }
+  const duration = minutes * 60 + seconds;
+  if (duration <= 0 || duration > 6 * 60 * 60) { showToast('用时需要在 1 秒到 6 小时之间'); $('#createRecordMinutes').focus(); return; }
+  const endedAt = fromDateTimeLocalValue($('#createRecordEndedAt').value);
+  if (!endedAt) { showToast('请选择有效的结束时间'); $('#createRecordEndedAt').focus(); return; }
+  const scoreRaw = $('#createRecordScore').value.trim(), score = toScore(scoreRaw);
+  if (scoreRaw && score === null) { showToast('分数需要在 0 到 100 之间'); $('#createRecordScore').focus(); return; }
+  const questionsRaw = $('#createRecordQuestions').value.trim(), questions = questionsRaw ? toPositiveInt(questionsRaw) : null;
+  if (questionsRaw && questions === null) { showToast('题量需要大于 0'); $('#createRecordQuestions').focus(); return; }
+  const correctRaw = $('#createRecordCorrect').value.trim(), correct = correctRaw ? toNonNegativeInt(correctRaw) : null;
+  if (correctRaw && correct === null) { showToast('正确数不能小于 0'); $('#createRecordCorrect').focus(); return; }
+  if (correct !== null && questions === null) { showToast('填写正确数前，先补上题量'); $('#createRecordQuestions').focus(); return; }
+  if (questions !== null && correct !== null && correct > questions) { showToast('正确数不能大于题量'); $('#createRecordCorrect').focus(); return; }
+  const papersRaw = $('#createRecordPapers').value.trim(), papers = papersRaw ? toPositiveInt(papersRaw) : null;
+  if (papersRaw && papers === null) { showToast('套数需要大于 0'); $('#createRecordPapers').focus(); return; }
+
+  const record = normalizeRecords([{
+    id: crypto.randomUUID?.() || `${Date.now()}`,
+    mode,
+    module: moduleName,
+    duration,
+    startedAt: new Date(new Date(endedAt).getTime() - duration * 1000).toISOString(),
+    endedAt,
+    questions,
+    correct,
+    score,
+    papers,
+    laps: [],
+    lapReviews: [],
+    moduleResults: [],
+    source: $('#createRecordSource').value,
+    difficulty: $('#createRecordDifficultyChoices [aria-pressed="true"]')?.dataset.difficulty || null,
+    note: $('#createRecordNote').value
+  }])[0];
+  if (!record) { showToast('这条训练记录无法保存，请检查填写内容'); return; }
+  const previousRecords = state.records;
+  const reachedLimit = previousRecords.length >= 500;
+  state.records = [record, ...previousRecords].sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt)).slice(0, 500);
+  if (!saveRecords()) { state.records = previousRecords; return; }
+  renderStats(); renderDataManagementSummary(); closeRecordCreator();
+  showToast(reachedLimit ? `已新增${moduleName}记录，已保留最近 500 条` : `已新增${moduleName}训练记录`);
 }
 
 function setDifficultyChoice(containerId, difficulty) {
@@ -2561,9 +2629,17 @@ $$('#editRecordDifficultyChoices [data-difficulty]').forEach(button => button.ad
   setDifficultyChoice('editRecordDifficultyChoices', willSelect ? button.dataset.difficulty : null);
 }));
 $('#backTrainingMetaBtn').addEventListener('click', returnToTrainingPreviousStep); $('#skipTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(true)); $('#confirmTrainingMetaBtn').addEventListener('click', () => finishTrainingMeta(false));
-$('#recordEditForm').addEventListener('submit', event => { event.preventDefault(); saveRecordEditor(); });
-$('#cancelRecordEditBtn').addEventListener('click', closeRecordEditor);
-$('#recordEditDialog').addEventListener('cancel', event => { event.preventDefault(); closeRecordEditor(); });
+  $('#recordEditForm').addEventListener('submit', event => { event.preventDefault(); saveRecordEditor(); });
+  $('#cancelRecordEditBtn').addEventListener('click', closeRecordEditor);
+  $('#recordEditDialog').addEventListener('cancel', event => { event.preventDefault(); closeRecordEditor(); });
+  $('#addRecordBtn').addEventListener('click', openRecordCreator);
+  $('#recordCreateForm').addEventListener('submit', event => { event.preventDefault(); saveRecordCreator(); });
+  $('#cancelRecordCreateBtn').addEventListener('click', closeRecordCreator);
+  $('#recordCreateDialog').addEventListener('cancel', event => { event.preventDefault(); closeRecordCreator(); });
+  $$('#createRecordDifficultyChoices [data-difficulty]').forEach(button => button.addEventListener('click', () => {
+    const willSelect = button.getAttribute('aria-pressed') !== 'true';
+    setDifficultyChoice('createRecordDifficultyChoices', willSelect ? button.dataset.difficulty : null);
+  }));
 $('#skipMockModuleBtn').addEventListener('click', () => finishMockModuleReview(true)); $('#saveMockModuleBtn').addEventListener('click', () => finishMockModuleReview(false));
 $('#backMockModuleBtn').addEventListener('click', returnFromMockModuleReview);
 $('#mockModuleDialog').addEventListener('cancel', event => { event.preventDefault(); returnFromMockModuleReview(); });

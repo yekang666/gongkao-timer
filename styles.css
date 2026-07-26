@@ -608,7 +608,8 @@ button:active:not(:disabled) { transform: translateY(1px); }
 }
 .delete-record { border-radius: 3px; }
 .delete-record:hover { background: #f7e5e3; color: var(--danger); }
-.history-tools { gap: 8px; }
+.history-tools { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.history-tools .compact-button { min-height: 34px; padding: 0 10px; font-size: 11px; }
 .history-tools select { max-width: 132px; padding: 6px 24px 6px 8px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface); color: var(--text); font-size: 11px; }
 .danger-link { padding: 5px 0; border-radius: 3px; font-size: 11px; }
 .danger-link:hover { background: #f7e5e3; }
@@ -851,7 +852,8 @@ dialog p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
 .question-input small { color: var(--muted); font-size: 11px; font-weight: 400; }
 .dialog-actions { flex-wrap: wrap; gap: 8px; margin-top: 22px; }
 .dialog-actions button { min-height: 42px; }
-#recordEditDialog {
+#recordEditDialog,
+#recordCreateDialog {
   width: min(560px, calc(100% - 32px));
   max-height: calc(100vh - 32px);
   overflow: auto;
@@ -860,7 +862,11 @@ dialog p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
 #recordEditDialog > .dialog-icon,
 #recordEditDialog > .dialog-kicker,
 #recordEditDialog > h2,
-#recordEditDialog > p {
+#recordEditDialog > p,
+#recordCreateDialog > .dialog-icon,
+#recordCreateDialog > .dialog-kicker,
+#recordCreateDialog > h2,
+#recordCreateDialog > p {
   text-align: center;
 }
 .record-edit-form { margin-top: 18px; }
@@ -875,14 +881,17 @@ dialog p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
   grid-template-columns: minmax(0, 1fr) 92px;
   gap: 10px;
 }
+.record-edit-form .meta-field select { width: 100%; min-height: 42px; padding: 10px 32px 10px 11px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface); color: var(--text); }
 #editRecordModule[readonly] {
   border-color: var(--line);
   background: var(--surface-2);
   color: var(--text);
   cursor: default;
 }
-#recordEditDialog .meta-group { margin-top: 18px; }
-#recordEditDialog .meta-choice-row button {
+#recordEditDialog .meta-group,
+#recordCreateDialog .meta-group { margin-top: 18px; }
+#recordEditDialog .meta-choice-row button,
+#recordCreateDialog .meta-choice-row button {
   min-height: 36px;
 }
 .restore-preview-grid {
@@ -1091,7 +1100,13 @@ body.dark .mock-report-insights p { background: var(--surface-2); }
   .history-row { grid-template-columns: minmax(0, 1fr) 30px; padding: 13px 6px; margin: 0 -6px; }
   .history-edit-trigger { grid-template-columns: minmax(0, 1fr) auto; }
   .history-side span { display: none; }
-  #recordEditDialog { padding: 22px 18px; }
+  .drawer-section[data-stats-panel="history"] > .section-title { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+  .drawer-section[data-stats-panel="history"] > .section-title > h3 { width: 100%; }
+  .history-tools { width: 100%; justify-content: flex-start; }
+  .history-tools select { flex: 1 1 110px; max-width: none; min-height: 42px; }
+  .history-tools .compact-button { min-height: 42px; }
+  .history-tools .danger-link { min-height: 42px; }
+  #recordEditDialog, #recordCreateDialog { padding: 22px 18px; }
   .record-edit-grid, .record-edit-pair { grid-template-columns: 1fr; }
   .stats-view-tabs { top: -22px; margin: 0 -18px 22px; padding: 12px 18px 8px; overflow-x: auto; }
   .stats-view-tabs button { min-width: 52px; flex: 0 0 auto; font-size: 11px; }

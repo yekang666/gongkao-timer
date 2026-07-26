@@ -20,7 +20,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><img src="assets/app-icon.png" alt=""></span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.19.0</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.20.0</span></div><small>训练工作台</small></div>
       </div>
       <div class="exam-countdown" id="examCountdown">
         <button class="exam-countdown-main" id="examCountdownOpenBtn" type="button" title="设置考试倒计时">
@@ -104,7 +104,7 @@
     <section class="drawer-section analytics-section hidden" data-stats-panel="baseline"><div class="section-title"><div><h3>个人题型基准</h3><span id="baselinePeriodSummary">最近 7 天 · 速度 / 正确率 / 稳定性</span></div></div><div class="baseline-list" id="baselineList"></div><div class="analytics-note hidden" id="baselineDataNote"></div></section>
     <section class="drawer-section analytics-section hidden" data-stats-panel="reasons"><div class="section-title"><div><h3>题目错因趋势</h3><span id="reasonPeriodSummary">最近 7 天 · 仅统计逐题错误标记</span></div></div><div class="reason-trend-list" id="reasonTrendList"></div></section>
     <section class="drawer-section hidden" data-stats-panel="baseline"><div class="section-title"><h3>专项历史总览</h3><span>全部记录</span></div><div class="module-stats" id="moduleStats"></div></section>
-    <section class="drawer-section grow hidden" data-stats-panel="history"><div class="section-title"><h3>最近记录</h3><div class="history-tools"><select id="historyFilter" aria-label="筛选训练记录"><option value="">全部记录</option><optgroup label="难度"><option value="difficulty:简单">简单</option><option value="difficulty:正常">正常</option><option value="difficulty:较难">较难</option></optgroup></select><button class="danger-link" id="clearAllBtn" type="button">清空全部</button></div></div><div class="history-list" id="historyList"></div></section>
+    <section class="drawer-section grow hidden" data-stats-panel="history"><div class="section-title"><h3>最近记录</h3><div class="history-tools"><button class="small-button compact-button" id="addRecordBtn" type="button">新增记录</button><select id="historyFilter" aria-label="筛选训练记录"><option value="">全部记录</option><optgroup label="难度"><option value="difficulty:简单">简单</option><option value="difficulty:正常">正常</option><option value="difficulty:较难">较难</option></optgroup></select><button class="danger-link" id="clearAllBtn" type="button">清空全部</button></div></div><div class="history-list" id="historyList"></div></section>
   </aside>
 
   <aside class="drawer" id="settingsDrawer" aria-hidden="true" inert>
@@ -202,6 +202,32 @@
       <fieldset class="meta-group"><legend>本次难度</legend><div class="meta-choice-row" id="editRecordDifficultyChoices"><button data-difficulty="简单" type="button" aria-pressed="false">简单</button><button data-difficulty="正常" type="button" aria-pressed="false">正常</button><button data-difficulty="较难" type="button" aria-pressed="false">较难</button></div></fieldset>
       <label class="meta-field"><span>复盘备注</span><textarea id="editRecordNote" maxlength="500" rows="3" placeholder="记录这次训练需要注意的地方"></textarea></label>
       <div class="dialog-actions"><button class="secondary" id="cancelRecordEditBtn" type="button">取消</button><button class="primary" type="submit">保存修改</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="recordCreateDialog" aria-labelledby="recordCreateTitle">
+    <div class="dialog-icon">+</div>
+    <span class="dialog-kicker">训练记录</span>
+    <h2 id="recordCreateTitle">新增训练记录</h2>
+    <p>补录过去的训练，保存后会同步更新数据复盘。</p>
+    <form id="recordCreateForm" class="record-edit-form">
+      <div class="record-edit-grid">
+        <label class="meta-field"><span>训练模式</span><select id="createRecordMode" aria-label="训练模式"><option value="section">专项模式</option><option value="mock">模考模式</option><option value="single">自由测速</option></select></label>
+        <label class="meta-field"><span>题型 / 模块</span><input id="createRecordModule" type="text" maxlength="80" required placeholder="例如：资料分析"></label>
+        <label class="meta-field record-edit-wide"><span>结束时间</span><input id="createRecordEndedAt" type="datetime-local" required></label>
+        <div class="record-edit-pair record-edit-wide" aria-label="训练用时">
+          <label class="meta-field"><span>用时（分钟）</span><input id="createRecordMinutes" type="number" min="0" max="360" step="1" inputmode="numeric" required value="0" placeholder="例如：25"></label>
+          <label class="meta-field"><span>秒</span><input id="createRecordSeconds" type="number" min="0" max="59" step="1" inputmode="numeric" required value="0"></label>
+        </div>
+        <label class="meta-field"><span>分数</span><input id="createRecordScore" type="number" min="0" max="100" step="0.5" inputmode="decimal" placeholder="可留空"></label>
+        <label class="meta-field"><span>套数</span><input id="createRecordPapers" type="number" min="1" step="1" inputmode="numeric" placeholder="可留空"></label>
+        <label class="meta-field"><span>题量</span><input id="createRecordQuestions" type="number" min="1" step="1" inputmode="numeric" placeholder="可留空"></label>
+        <label class="meta-field"><span>正确数</span><input id="createRecordCorrect" type="number" min="0" step="1" inputmode="numeric" placeholder="可留空"></label>
+        <label class="meta-field record-edit-wide"><span>试卷 / 资料来源</span><input id="createRecordSource" type="text" maxlength="80" placeholder="例如：2025 国考地市卷"></label>
+      </div>
+      <fieldset class="meta-group"><legend>本次难度</legend><div class="meta-choice-row" id="createRecordDifficultyChoices"><button data-difficulty="简单" type="button" aria-pressed="false">简单</button><button data-difficulty="正常" type="button" aria-pressed="false">正常</button><button data-difficulty="较难" type="button" aria-pressed="false">较难</button></div></fieldset>
+      <label class="meta-field"><span>复盘备注</span><textarea id="createRecordNote" maxlength="500" rows="3" placeholder="记录这次训练需要注意的地方"></textarea></label>
+      <div class="dialog-actions"><button class="secondary" id="cancelRecordCreateBtn" type="button">取消</button><button class="primary" type="submit">添加记录</button></div>
     </form>
   </dialog>
 

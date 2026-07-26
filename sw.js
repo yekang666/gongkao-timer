@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'gongkao-timer-';
-const CACHE_NAME = `${CACHE_PREFIX}v2.19.0`;
+const CACHE_NAME = `${CACHE_PREFIX}v2.20.0`;
 const FRESH_APP_FILES = new Set(['index.html', 'styles.css', 'app.js', 'manifest.webmanifest']);
 const APP_SHELL = [
   './',

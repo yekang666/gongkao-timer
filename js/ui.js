@@ -1,3 +1,4 @@
+import { maybeResumeFocusSound } from './audio.js';
 import { $, $$, state } from './core.js';
 
 function stopInterval() { clearInterval(state.interval); state.interval = null; }
@@ -21,4 +22,19 @@ function closeDrawers(restoreFocus = true){
   if (hadOpenDrawer) drawerReturnFocus = null;
 }
 
-export { closeDrawers, hideToast, openDrawer, resetFinishDialog, showToast, stopInterval };
+// 系统弹窗（confirm/prompt）在 iOS 上会打断页面音频；关闭弹窗后主动多次尝试恢复背景音。
+function scheduleFocusSoundResume() {
+  [80, 400, 1500].forEach(delay => setTimeout(() => maybeResumeFocusSound(), delay));
+}
+function appConfirm(message) {
+  const accepted = window.confirm(message);
+  scheduleFocusSoundResume();
+  return accepted;
+}
+function appPrompt(message, fallback = '') {
+  const value = window.prompt(message, fallback);
+  scheduleFocusSoundResume();
+  return value;
+}
+
+export { appConfirm, appPrompt, closeDrawers, hideToast, openDrawer, resetFinishDialog, showToast, stopInterval };

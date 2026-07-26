@@ -6,12 +6,20 @@ const focusAudio = { ctx: null, source: null, gain: null, nodes: [], playing: fa
 async function ensureAudioContext(showWarning = false) {
   const AudioCtor = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtor) { if (showWarning) showToast('当前设备暂时无法播放声音', 'warning'); return null; }
+  if (focusAudio.ctx && focusAudio.ctx.state === 'closed') focusAudio.ctx = null;
   if (!focusAudio.ctx) {
     try { focusAudio.ctx = new AudioCtor(); }
     catch { if (showWarning) showToast('声音暂时无法启动，请先点一下页面再试', 'warning'); return null; }
+    // 被系统打断（弹窗、来电、Siri）后自动尝试恢复；没有手势权限时静默失败，等下次交互再恢复
+    focusAudio.ctx.addEventListener('statechange', () => {
+      const ctxState = focusAudio.ctx?.state;
+      if (focusAudio.playing && ctxState && ctxState !== 'running' && ctxState !== 'closed') {
+        setTimeout(() => { try { maybeResumeFocusSound(); } catch {} }, 250);
+      }
+    });
   }
   if (focusAudio.alertKeepAliveRequested) startAlertKeepAlive(focusAudio.ctx);
-  try { if (focusAudio.ctx.state === 'suspended') await focusAudio.ctx.resume(); } catch {}
+  try { if (focusAudio.ctx.state !== 'running' && focusAudio.ctx.state !== 'closed') await focusAudio.ctx.resume(); } catch {}
   if (showWarning && focusAudio.ctx.state !== 'running') showToast('请先点一下页面，再开启声音', 'warning');
   return focusAudio.ctx;
 }
@@ -218,7 +226,17 @@ async function toggleFocusSound(enabled) {
 
 function maybeResumeFocusSound() {
   const settings = normalizeFocusSoundSettings();
-  if (settings.enabled && !focusAudio.playing && !focusAudio.starting) startFocusSound(false);
+  if (!settings.enabled) return;
+  const ctx = focusAudio.ctx;
+  if (focusAudio.playing && ctx) {
+    if (ctx.state === 'running') return;
+    // iOS 弹出系统对话框、来电、Siri 等会把上下文置为 suspended / interrupted；
+    // 节点还在，直接 resume 即可无缝续播。上下文被系统关闭时重建。
+    if (ctx.state === 'closed') { focusAudio.ctx = null; startFocusSound(false); return; }
+    ctx.resume().catch(() => {});
+    return;
+  }
+  if (!focusAudio.playing && !focusAudio.starting) startFocusSound(false);
 }
 
 function syncFocusSoundUi() {

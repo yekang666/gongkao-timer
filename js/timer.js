@@ -6,7 +6,7 @@ import { syncMobilePipSource, syncNativeVideoTime, updatePip } from './pip.js';
 import { render } from './render.js';
 import { getOrderedSectionPresets } from './sections.js';
 import { finishSpeedSession } from './speed.js';
-import { resetFinishDialog, showToast, stopInterval } from './ui.js';
+import { appConfirm, resetFinishDialog, showToast, stopInterval } from './ui.js';
 
 function hasAccuracy(record) {
   return toPositiveInt(record.questions) && toNonNegativeInt(record.correct) !== null;
@@ -36,13 +36,13 @@ function renderPresets() {
 function selectPreset(preset) {
   if (state.status === 'running') return;
   if (state.preset === preset) return;
-  if (state.elapsed >= 1 && !confirm('切换题型会清空当前未保存的计时和打点，确定继续吗？')) return;
+  if (state.elapsed >= 1 && !appConfirm('切换题型会清空当前未保存的计时和打点，确定继续吗？')) return;
   state.preset = preset; state.duration = preset.seconds; resetTimer(false); renderPresets();
 }
 
 function setMode(mode) {
   if (mode === state.mode) return;
-  if (state.elapsed >= 1 && !confirm('切换模式会清空当前未保存的训练，确定继续吗？')) return;
+  if (state.elapsed >= 1 && !appConfirm('切换模式会清空当前未保存的训练，确定继续吗？')) return;
   stopInterval(); state.mode = mode; state.preset = PRESETS[mode][0]; state.duration = state.preset.seconds;
   resetTimer(false);
   $$('.mode-tab').forEach(tab => { const active = tab.dataset.mode === mode; tab.classList.toggle('active', active); tab.setAttribute('aria-pressed', String(active)); });
@@ -79,7 +79,7 @@ function tick(skipPacing = false) {
 }
 
 function resetTimer(confirmNeeded = true) {
-  if (confirmNeeded && state.elapsed >= 1 && !confirm('确定重置本轮计时吗？未结束的记录不会保存。')) return;
+  if (confirmNeeded && state.elapsed >= 1 && !appConfirm('确定重置本轮计时吗？未结束的记录不会保存。')) return;
   stopInterval(); stopAlertKeepAlive(); clearActiveSession(); state.remaining = state.duration; state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.autoFinished = false; state.laps = []; state.lastLapElapsed = 0; state.pacingNotified = []; state.pendingMockModuleDraft = null; render(); updatePip(); syncMobilePipSource(true);
 }
 

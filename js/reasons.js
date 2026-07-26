@@ -1,5 +1,5 @@
 import { $, LAP_ERROR_REASONS, escapeAttribute, escapeHTML, normalizeText, saveSettings, state } from './core.js';
-import { showToast } from './ui.js';
+import { appConfirm, showToast } from './ui.js';
 
 // 自定义错因：内置 9 类之外，用户可添加自己的错因标签。
 // 标签只影响打标时的快捷选项；删除标签不会清除历史记录里已保存的错因。
@@ -71,7 +71,7 @@ $('#customReasonList')?.addEventListener('click', event => {
   const button = event.target.closest('[data-remove-reason]');
   if (!button) return;
   const name = button.dataset.removeReason;
-  if (!confirm(`删除自定义错因「${name}」？\n历史记录中已标记的「${name}」会保留，只是之后打标时不再显示这个选项。`)) return;
+  if (!appConfirm(`删除自定义错因「${name}」？\n历史记录中已标记的「${name}」会保留，只是之后打标时不再显示这个选项。`)) return;
   if (removeCustomLapReason(name)) showToast(`已删除错因「${name}」`);
 });
 renderCustomReasonSettings();

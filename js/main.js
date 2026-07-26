@@ -12,7 +12,7 @@ import { applyCustomDurations, beginSectionSort, finishSectionSort, moveSectionC
 import { cancelSpeedSession, showSpeedNextStep, showSpeedPreviousStep } from './speed.js';
 import { applySettings, cancelTrainingMetaDialog, exportData, exportRecordsCsv, handleGlobalShortcut, renderDataManagementSummary, renderStats } from './stats.js';
 import { confirmFinish, recordLap, renderPresets, requestFinish, resetTimer, saveQuantitySession, setMode, startOrPause, tick, undoLap } from './timer.js';
-import { closeDrawers, resetFinishDialog, showToast, stopInterval } from './ui.js';
+import { appConfirm, closeDrawers, resetFinishDialog, showToast, stopInterval } from './ui.js';
 
 $$('.mode-tab').forEach(tab => tab.addEventListener('click', () => setMode(tab.dataset.mode)));
 $('#startBtn').addEventListener('click', startOrPause); $('#resetBtn').addEventListener('click', () => resetTimer(true)); $('#finishBtn').addEventListener('click', requestFinish);
@@ -61,7 +61,7 @@ $('#lapDetailList').addEventListener('click', updateLapReviewFromClick); $('#lap
 $('#saveLapReviewBtn').addEventListener('click', saveLapReviews); $('#closeLapDetailBtn').addEventListener('click', closeLapDetail);
 $('#lapDetailDialog').addEventListener('cancel', event => { event.preventDefault(); closeLapDetail(); });
 $('#statsBtn').addEventListener('click', openStatsDrawer);$('#settingsBtn').addEventListener('click',()=>openSettingsDrawer());$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
-$('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&confirm('确定清空全部训练记录吗？此操作无法撤销。')){const previousRecords=state.records;state.records=[];if(!saveRecords()){state.records=previousRecords;return;}renderStats();}});
+$('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&appConfirm('确定清空全部训练记录吗？此操作无法撤销。')){const previousRecords=state.records;state.records=[];if(!saveRecords()){state.records=previousRecords;return;}renderStats();}});
 $('#historyFilter').addEventListener('change', renderStats);
 $('#historyList').addEventListener('click', openRecordFromHistoryEvent);
 $('#historyList').addEventListener('keydown', openRecordFromHistoryKey);
@@ -104,6 +104,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(error => console.warn('Service Worker 注册失败', error)));
 }
 document.addEventListener('pointerdown', maybeResumeFocusSound, { passive: true });
+window.addEventListener('focus', maybeResumeFocusSound);
 document.addEventListener('keydown', maybeResumeFocusSound);
 window.addEventListener('beforeunload', () => { if (state.status === 'running') tick(true); persistActiveSession(true); stopInterval(); stopMobilePipSyncLoop(); stopPipFrames(); stopFocusSound(false); });
 applyCustomDurations();

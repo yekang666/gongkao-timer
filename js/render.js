@@ -3,7 +3,7 @@ import { addCustomLapReason, getAllLapReasons } from './reasons.js';
 import { formatClock, formatScore } from './format.js';
 import { renderStats } from './stats.js';
 import { renderLapPanel, renderPacingStatus } from './timer.js';
-import { showToast } from './ui.js';
+import { appPrompt, showToast } from './ui.js';
 
 function render() {
   const isOvertime = state.mode !== 'single' && state.autoFinished;
@@ -113,7 +113,7 @@ function updateLapReviewFromClick(event) {
   const review = getLapReviewDraftItem(index);
   if ('reviewAddReason' in button.dataset) {
     if (review.status !== 'wrong') return;
-    const rawName = prompt('输入自定义错因（最多 12 字），会保存为常用选项：', '');
+    const rawName = appPrompt('输入自定义错因（最多 12 字），会保存为常用选项：', '');
     if (rawName === null) return;
     const result = addCustomLapReason(rawName);
     if (result.error) { showToast(result.error, 'warning'); return; }

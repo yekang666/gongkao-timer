@@ -1,8 +1,9 @@
-import { $, $$, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, saveRecords, state, toScore } from './core.js';
+import { APP_EVENTS, emitAppEvent } from './app-events.js';
+import { $, $$, escapeAttribute, escapeHTML, normalizeLapReviews, saveRecords, state, toScore } from './core.js';
 import { addCustomLapReason, getAllLapReasons, isCustomLapReason, removeCustomLapReason } from './reasons.js';
-import { formatClock, formatScore } from './format.js';
-import { renderStats } from './stats.js';
-import { renderLapPanel, renderPacingStatus } from './timer.js';
+import { formatClock, formatScore, formatShortClock } from './format.js';
+import { getLapReviewCounts, getLapStats } from './metrics.js';
+import { getMockPacingPlan, isMockPacingActive } from './pacing.js';
 import { appConfirm, appPrompt, showToast } from './ui.js';
 
 function render() {
@@ -24,30 +25,38 @@ function render() {
   renderLapPanel(); renderPacingStatus();
 }
 
-function getLapStats(laps) {
-  const values = normalizeLaps(laps), total = values.reduce((sum, value) => sum + value, 0);
-  if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  const median = sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-  const slowest = Math.max(...values), fastest = Math.min(...values);
-  return { values, total, average: total / values.length, median, slowest, fastest, slowestIndex: values.indexOf(slowest) };
+function renderLapPanel() {
+  const count = state.laps.length;
+  const completedDuration = state.laps.reduce((sum, value) => sum + value, 0);
+  const currentDuration = Math.max(0, state.elapsed - state.lastLapElapsed);
+  $('#lapCount').textContent = `${count} 题`;
+  $('#currentLapTime').textContent = formatClock(currentDuration).slice(3);
+  $('#lapAverageTime').textContent = count ? formatClock(completedDuration / count).slice(3) : '暂无';
+  $('#lapBtn').disabled = state.status !== 'running';
+  $('#undoLapBtn').disabled = !count;
+  $('#timerDisplay').classList.toggle('lap-target', state.status === 'running');
+  $('#timerDisplay').title = state.status === 'running' ? '点击记录完成一题' : '';
+  $('#timerDisplay').tabIndex = state.status === 'running' ? 0 : -1;
+  $('#timerDisplay').setAttribute('aria-label', state.status === 'running' ? `计时 ${$('#timerDisplay').textContent}，点击记录完成一题` : `计时 ${$('#timerDisplay').textContent}`);
+}
+
+function renderPacingStatus() {
+  const status = $('#pacingStatus');
+  if (!isMockPacingActive()) { status.classList.add('hidden'); return; }
+  const plan = getMockPacingPlan();
+  const next = plan.find(checkpoint => state.elapsed < checkpoint.at);
+  status.classList.remove('hidden');
+  if (next) {
+    const trackingHint = state.laps.length ? `当前 ${state.laps.length} 题` : '打点后判断是否落后';
+    $('#pacingStatusText').textContent = `${formatShortClock(next.at)} 前完成 ${next.module} · 累计 ${next.questions} 题 · ${trackingHint}`;
+  } else {
+    $('#pacingStatusText').textContent = `已进入最后模块 · 当前打点 ${state.laps.length} 题`;
+  }
 }
 
 function getLapReviewDraftItem(index) {
   const review = state.lapReviewDraft[index];
   return review ? { status: review.status || null, reason: review.reason || null, note: review.note || '' } : { status: null, reason: null, note: '' };
-}
-
-function getLapReviewCounts(reviews, lapCount) {
-  const counts = { correct: 0, wrong: 0, skipped: 0, reviewed: 0, reasons: {} };
-  for (let index = 0; index < lapCount; index += 1) {
-    const review = reviews[index];
-    if (!review?.status) continue;
-    counts[review.status] += 1; counts.reviewed += 1;
-    if (review.status === 'wrong' && review.reason) counts.reasons[review.reason] = (counts.reasons[review.reason] || 0) + 1;
-  }
-  return counts;
 }
 
 function renderLapReviewInsights(stats) {
@@ -58,7 +67,7 @@ function renderLapReviewInsights(stats) {
   const resultSummary = counts.reviewed ? `正确 ${counts.correct} · 错误 ${counts.wrong} · 跳过 ${counts.skipped}` : '尚未标记，可直接关闭后稍后补录';
   const priorityQuestions = costlyWrong.slice(0, 8).map(item => `第 ${item.index + 1} 题`).join('、');
   const prioritySummary = costlyWrong.length ? `优先复盘：${priorityQuestions}${costlyWrong.length > 8 ? `等 ${costlyWrong.length} 题` : ''}（做错且超过平均用时）` : '';
-  $('#lapReviewInsights').innerHTML = `<strong>${resultSummary}</strong>${reasonSummary ? `<span>错因：${reasonSummary}</span>` : ''}${prioritySummary ? `<span class="priority-review">${prioritySummary}</span>` : ''}`;
+  $('#lapReviewInsights').innerHTML = `<strong>${resultSummary}</strong>${reasonSummary ? `<span>错因：${escapeHTML(reasonSummary)}</span>` : ''}${prioritySummary ? `<span class="priority-review">${prioritySummary}</span>` : ''}`;
 }
 
 function renderLapReviewList(record, stats) {
@@ -160,8 +169,8 @@ function saveLapReviews() {
   record.lapReviews = normalizeLapReviews(state.lapReviewDraft, stats.values.length);
   const counts = getLapReviewCounts(record.lapReviews, stats.values.length);
   if (!saveRecords()) { record.lapReviews = previousReviews; return; }
-  renderStats(); closeLapDetail();
+  emitAppEvent(APP_EVENTS.RENDER_STATS); closeLapDetail();
   showToast(counts.reviewed ? `逐题复盘已保存：已标记 ${counts.reviewed}/${stats.values.length} 题` : '记录已保留，可稍后在历史记录中补充逐题复盘');
 }
 
-export { closeLapDetail, getLapReviewCounts, openLapDetail, render, saveLapReviews, updateLapReviewFromClick, updateLapReviewNote };
+export { closeLapDetail, openLapDetail, render, saveLapReviews, updateLapReviewFromClick, updateLapReviewNote };

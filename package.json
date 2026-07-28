@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "scripts": {
+    "check": "node scripts/check-project.mjs",
+    "check:stats-browser": "node scripts/check-stats-browser.mjs"
+  }
+}

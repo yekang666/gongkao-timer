@@ -1,6 +1,5 @@
+import { APP_EVENTS, emitAppEvent } from './app-events.js';
 import { $, $$, DEFAULT_SECTION_ORDER, PRESETS, saveSettings, state } from './core.js';
-import { render } from './render.js';
-import { renderPresets, resetTimer } from './timer.js';
 import { showToast } from './ui.js';
 
 function normalizeSectionOrder(order) {
@@ -62,7 +61,7 @@ function moveSectionCard(button) {
   if (!card || !target) return;
   animateSectionGridReflow(() => direction < 0 ? grid.insertBefore(card, target) : grid.insertBefore(target, card));
   state.settings.sectionOrder = normalizeSectionOrder(getSectionCardOrder()); state.pacingNotified = []; const saved = saveSettings();
-  syncSectionMoveButtons(); renderPresets(); renderPacingOrderNote(saved ? '答题顺序已调整并保存' : '答题顺序已调整，但未能保存'); button.focus();
+  syncSectionMoveButtons(); emitAppEvent(APP_EVENTS.RENDER_PRESETS); renderPacingOrderNote(saved ? '答题顺序已调整并保存' : '答题顺序已调整，但未能保存'); button.focus();
 }
 function renderPacingOrderNote(message = '') {
   const note = $('#pacingOrderNote'); if (!note) return;
@@ -73,8 +72,8 @@ function saveSectionTimes() {
   $$('[data-section-time]').forEach(input => { const minutes = Math.max(1, Math.floor(Number(input.value) || 0)); section[input.dataset.sectionTime] = minutes * 60; input.value = minutes; });
   state.settings.customDurations = { ...(state.settings.customDurations || {}), section };
   applyCustomDurations(); state.pacingNotified = []; const saved = saveSettings();
-  if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; resetTimer(false); }
-  renderSectionTimeSettings(); renderPresets(); render(); if (saved) showToast('专项时间已保存');
+  if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; emitAppEvent(APP_EVENTS.RENDER_APP, { resetTimer: true }); }
+  renderSectionTimeSettings(); emitAppEvent(APP_EVENTS.RENDER_PRESETS); emitAppEvent(APP_EVENTS.RENDER_APP); if (saved) showToast('专项时间已保存');
 }
 
 const sectionSort = { card: null, placeholder: null, timer: null, frame: null, active: false, inputType: null, pointerId: null, touchId: null, startX: 0, startY: 0, lastX: 0, lastY: 0, offsetX: 0, offsetY: 0, originalOrder: [] };
@@ -159,7 +158,7 @@ function finishSectionSort(cancelled = false) {
   resetSectionSortState();
   if (!order) { renderPacingOrderNote(); return; }
   state.settings.sectionOrder = normalizeSectionOrder(order); applySectionOrder(); state.pacingNotified = []; const saved = saveSettings();
-  renderPresets(); render(); renderPacingOrderNote(); if (saved) showToast('模考节奏顺序已保存');
+  emitAppEvent(APP_EVENTS.RENDER_PRESETS); emitAppEvent(APP_EVENTS.RENDER_APP); renderPacingOrderNote(); if (saved) showToast('模考节奏顺序已保存');
 }
 
 export { applyCustomDurations, beginSectionSort, getSectionDurations, finishSectionSort, getOrderedSectionPresets, getSectionDurationSnapshot, getSectionOrderSnapshot, moveSectionCard, moveSectionSort, normalizeSectionOrder, renderSectionTimeSettings, saveSectionTimes, sectionSort };

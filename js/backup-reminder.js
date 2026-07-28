@@ -1,5 +1,5 @@
+import { APP_EVENTS, emitAppEvent } from './app-events.js';
 import { $, saveSettings, state } from './core.js';
-import { exportData } from './stats.js';
 
 // 备份提醒：训练数据只保存在本机浏览器里，清缓存即丢失。
 // 满足以下任一条件时，启动页顶部显示提醒横幅（可在设置中关闭）：
@@ -82,7 +82,7 @@ export function syncBackupReminderUi() {
   renderLastBackupInfo();
 }
 
-$('#backupNowBtn')?.addEventListener('click', () => exportData());
+$('#backupNowBtn')?.addEventListener('click', () => emitAppEvent(APP_EVENTS.EXPORT_DATA));
 $('#backupLaterBtn')?.addEventListener('click', snoozeBackupReminder);
 $('#backupReminderToggle')?.addEventListener('change', event => {
   state.settings.backupReminder = event.target.checked;

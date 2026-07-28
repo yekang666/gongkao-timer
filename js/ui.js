@@ -1,4 +1,4 @@
-import { maybeResumeFocusSound } from './audio.js';
+import { APP_EVENTS, emitAppEvent } from './app-events.js';
 import { $, $$, state } from './core.js';
 
 function stopInterval() { clearInterval(state.interval); state.interval = null; }
@@ -24,7 +24,7 @@ function closeDrawers(restoreFocus = true){
 
 // 系统弹窗（confirm/prompt）在 iOS 上会打断页面音频；关闭弹窗后主动多次尝试恢复背景音。
 function scheduleFocusSoundResume() {
-  [80, 400, 1500].forEach(delay => setTimeout(() => maybeResumeFocusSound(), delay));
+  [80, 400, 1500].forEach(delay => setTimeout(() => emitAppEvent(APP_EVENTS.RESUME_FOCUS_SOUND), delay));
 }
 function appConfirm(message) {
   const accepted = window.confirm(message);

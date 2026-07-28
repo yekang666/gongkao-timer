@@ -1,14 +1,13 @@
-import { getHistoryBenchmark, getModuleAnalytics, openSettingsDrawer, openStatsDrawer, renderPersonalAnalytics } from './analytics.js';
+import { getHistoryBenchmark, getModuleAnalytics, renderPersonalAnalytics } from './analytics.js';
+import { APP_EVENTS, emitAppEvent } from './app-events.js';
 import { markBackupDone, renderLastBackupInfo } from './backup-reminder.js';
 import { focusAudio, normalizeFocusSoundSettings, stopFocusSound, syncFocusSoundUi } from './audio.js';
 import { $, $$, APP_VERSION, MOCK_MODULE_NAMES, SPEED_SCORE_TYPES, STORAGE_RECORDS, STORAGE_SETTINGS, TRACKING_CATEGORIES, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, normalizeModuleResults, normalizeRecords, saveRecords, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
 import { normalizeExamCountdown, renderExamCountdown } from './exam.js';
-import { formatAccuracy, formatClock, formatDuration, formatScore } from './format.js';
-import { openMockReport, returnToTrainingPreviousStep } from './mock.js';
+import { formatAccuracy, formatClock, formatDuration, formatScore, getDateStamp } from './format.js';
+import { getAccuracyTotals, getLapReviewCounts, getScoreAverage, hasAccuracy } from './metrics.js';
 import { renderPrediction } from './predict.js';
-import { getLapReviewCounts, openLapDetail, render } from './render.js';
 import { getSectionDurationSnapshot, getSectionOrderSnapshot } from './sections.js';
-import { getAccuracyTotals, getScoreAverage, hasAccuracy, recordLap, requestFinish, resetTimer, startOrPause, undoLap } from './timer.js';
 import { appConfirm, showToast } from './ui.js';
 
 function isEditableShortcutTarget(target) {
@@ -16,17 +15,9 @@ function isEditableShortcutTarget(target) {
 }
 
 function runShortcutAction(action) {
-  switch (action) {
-    case 'toggle': startOrPause(); return '开始 / 暂停';
-    case 'finish': requestFinish(); return state.status === 'idle' ? '' : '结束并复盘';
-    case 'reset': resetTimer(true); return '重置';
-    case 'lap': recordLap(); return '完成一题';
-    case 'undoLap': undoLap(); return '撤销打点';
-    case 'stats': openStatsDrawer(); return '数据复盘';
-    case 'settings': openSettingsDrawer(); return '设置';
-    case 'shortcutHelp': openSettingsDrawer('shortcuts'); return '快捷键说明';
-    default: return '';
-  }
+  const labels = { toggle: '开始 / 暂停', finish: '结束并复盘', reset: '重置', lap: '完成一题', undoLap: '撤销打点', stats: '数据复盘', settings: '设置', shortcutHelp: '快捷键说明' };
+  emitAppEvent(APP_EVENTS.SHORTCUT_ACTION, action);
+  return labels[action] || '';
 }
 
 function getShortcutAction(event) {
@@ -60,6 +51,17 @@ function recordMatchesHistoryFilter(record, filter) {
   return true;
 }
 
+const HISTORY_PAGE_SIZE = 30;
+
+function recordMatchesHistoryPeriod(record, period, now) {
+  if (period === 'all') return true;
+  const date = new Date(record.endedAt);
+  if (!Number.isFinite(date.getTime())) return false;
+  const end = new Date(now); end.setHours(23, 59, 59, 999);
+  const start = new Date(end); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - period + 1);
+  return date >= start && date <= end;
+}
+
 function renderStats() {
   const now = new Date(), todayKey = now.toDateString(), weekStart = new Date(now); weekStart.setHours(0,0,0,0); weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
   renderDataManagementSummary();
@@ -81,8 +83,17 @@ function renderStats() {
     return `<div class="module-row"><strong>${name}</strong><span>${analytics.rows.length ? (timedRows.length ? formatDuration(avg) : '已录入复盘') : '暂无记录'}${paperText}${scoreText}${avgPerQuestion ? ` / 题均 ${formatClock(avgPerQuestion).slice(3)}` : ''}${accuracyText}</span></div>`;
   }).join('');
   const historyFilter = $('#historyFilter')?.value || '';
-  const filteredRecords = state.records.filter(record => recordMatchesHistoryFilter(record, historyFilter));
-  $('#historyList').innerHTML = filteredRecords.length ? filteredRecords.slice(0,30).map(r => {
+  const filteredRecords = state.records.filter(record => recordMatchesHistoryPeriod(record, state.historyPeriod, now) && recordMatchesHistoryFilter(record, historyFilter));
+  const pageCount = Math.max(1, Math.ceil(filteredRecords.length / HISTORY_PAGE_SIZE));
+  state.historyPage = Math.min(pageCount, Math.max(1, Math.floor(Number(state.historyPage) || 1)));
+  const pageStart = (state.historyPage - 1) * HISTORY_PAGE_SIZE, pageRecords = filteredRecords.slice(pageStart, pageStart + HISTORY_PAGE_SIZE);
+  $$('[data-history-period]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.historyPeriod === String(state.historyPeriod))));
+  $('#historyRangeSummary').textContent = `${state.historyPeriod === 'all' ? '全部记录' : `最近 ${state.historyPeriod} 天`} · ${filteredRecords.length} 条`;
+  $('#historyPagination').classList.toggle('hidden', pageCount <= 1);
+  $('#historyPageInfo').textContent = `第 ${state.historyPage} / ${pageCount} 页 · 共 ${filteredRecords.length} 条`;
+  $('#historyPrevBtn').disabled = state.historyPage <= 1;
+  $('#historyNextBtn').disabled = state.historyPage >= pageCount;
+  $('#historyList').innerHTML = pageRecords.length ? pageRecords.map(r => {
     const accuracyText = hasAccuracy(r) ? ` · 正确 ${r.correct}/${r.questions} · 正确率 ${formatAccuracy(r.correct, r.questions)}` : '';
     const scoreText = toScore(r.score) !== null ? ` · ${formatScore(toScore(r.score))}` : '';
     const lapCount = normalizeLaps(r.laps).length, reviewCounts = getLapReviewCounts(normalizeLapReviews(r.lapReviews, lapCount), lapCount);
@@ -95,7 +106,7 @@ function renderStats() {
     const metaHtml = tags || notePreview || moduleReviewHtml ? `<span class="record-meta-tags">${tags}${moduleReviewHtml}</span>${notePreview ? `<span class="history-note">“${escapeHTML(notePreview)}”</span>` : ''}` : '';
     const benchmark = getHistoryBenchmark(r), benchmarkHtml = benchmark ? `<span class="history-benchmark">相对基准 · ${benchmark}</span>` : '';
     return `<div class="history-row" data-record-id="${escapeAttribute(r.id)}"><button class="history-edit-trigger" data-edit-record-id="${escapeAttribute(r.id)}" type="button" aria-label="修改${escapeAttribute(r.module)}记录"><span class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${benchmarkHtml}${metaHtml}</span><span class="history-side"><strong class="history-duration">${formatClock(r.duration)}</strong><span>点击编辑</span></span></button><button class="delete-record" data-id="${escapeAttribute(r.id)}" type="button" aria-label="删除${escapeAttribute(r.module)}记录" title="删除记录">×</button>${reportLink || lapLink ? `<div class="history-record-actions">${reportLink}${lapLink}</div>` : ''}</div>`;
-  }).join('') : `<div class="empty-state">${historyFilter ? '没有符合筛选条件的记录' : '完成一次训练后，记录会显示在这里'}</div>`;
+  }).join('') : `<div class="empty-state">${historyFilter || state.historyPeriod !== 'all' ? '这个时间范围内没有符合条件的记录' : '完成一次训练后，记录会显示在这里'}</div>`;
   $$('.delete-record').forEach(btn => btn.addEventListener('click', () => {
     if (!appConfirm('确定删除这条训练记录吗？此操作无法撤销。')) return;
     const previousRecords = state.records;
@@ -103,8 +114,6 @@ function renderStats() {
     if (!saveRecords()) { state.records = previousRecords; return; }
     renderStats();
   }));
-  $$('.lap-detail-button').forEach(btn => btn.addEventListener('click', () => openLapDetail(btn.dataset.lapId)));
-  $$('[data-mock-report-id]').forEach(btn => btn.addEventListener('click', () => openMockReport(btn.dataset.mockReportId)));
 }
 
 function applySettings() {
@@ -158,10 +167,6 @@ function buildExportData() {
   };
 }
 
-function getDateStamp(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob), link = document.createElement('a');
   link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url);
@@ -190,11 +195,6 @@ function csvCell(value) {
   let text = String(value ?? '');
   if (/^[\s]*[=+\-@]/.test(text) || /^[\t\r]/.test(text)) text = `'${text}`;
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
-
-function cancelTrainingMetaDialog() {
-  if (state.pendingMeta?.previous) { returnToTrainingPreviousStep(); return; }
-  state.pendingMeta = null; $('#trainingMetaDialog').close(); render(); showToast('已返回计时，当前训练尚未保存');
 }
 
 function buildRecordsCsv(records = normalizeRecords(state.records)) {
@@ -229,4 +229,4 @@ function exportRecordsCsv() {
   showToast('训练记录表已导出');
 }
 
-export { applySettings, buildExportData, buildRecordsCsv, buildSettingsSnapshot, cancelTrainingMetaDialog, exportData, exportRecordsCsv, formatExportDateTime, getDateStamp, handleGlobalShortcut, renderDataManagementSummary, renderStats };
+export { applySettings, buildExportData, buildRecordsCsv, buildSettingsSnapshot, exportData, exportRecordsCsv, formatExportDateTime, handleGlobalShortcut, renderDataManagementSummary, renderStats };

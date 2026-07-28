@@ -1,8 +1,5 @@
-import { normalizeImportedData } from './backup.js';
 import { $, state } from './core.js';
 import { formatClock } from './format.js';
-import { buildExportData, buildRecordsCsv } from './stats.js';
-import { resetTimer } from './timer.js';
 import { showToast } from './ui.js';
 
 let pipWindow = null;
@@ -184,10 +181,6 @@ async function togglePip() {
   }
 }
 window.state = state;
-window.resetTimer = resetTimer;
-window.buildExportData = buildExportData;
-window.buildRecordsCsv = buildRecordsCsv;
-window.normalizeImportedData = normalizeImportedData;
 window.syncNativeVideoTime = syncNativeVideoTime;
 window.getMobilePipTargetTime = getMobilePipTargetTime;
 

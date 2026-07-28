@@ -1,9 +1,8 @@
+import { APP_EVENTS, emitAppEvent } from './app-events.js';
 import { $, $$, SECTION_QUESTION_COUNTS, SPEED_SCORE_TYPES, TRACKING_CATEGORIES, capRecords, clearActiveSession, normalizeLaps, normalizeModuleResults, normalizeTrainingMeta, persistActiveSession, saveRecords, state, toNonNegativeInt, toScore } from './core.js';
 import { formatAccuracy, formatClock, formatScore } from './format.js';
-import { openTrainingMetaDialog } from './mock.js';
 import { syncMobilePipSource, syncNativeVideoTime } from './pip.js';
 import { openLapDetail, render } from './render.js';
-import { renderStats } from './stats.js';
 import { tick } from './timer.js';
 import { hideToast, showToast, stopInterval } from './ui.js';
 
@@ -122,7 +121,7 @@ function finishSpeedScoreStep() {
 function beginSpeedMeta() {
   const session = state.pendingSpeed; if (!session?.moduleName) return;
   state.pendingMeta = { context: 'speed', moduleName: session.moduleName, previous: { kind: 'speed' } };
-  $('#singleModuleDialog').close(); openTrainingMetaDialog(`${session.moduleName} · 训练复盘`, session.metaDraft, true);
+  $('#singleModuleDialog').close(); emitAppEvent(APP_EVENTS.OPEN_TRAINING_META, { title: `${session.moduleName} · 训练复盘`, initialMeta: session.metaDraft, showBack: true });
 }
 
 function showSpeedPreviousStep() {
@@ -179,7 +178,7 @@ function finalizeSpeedSession(moduleName, meta = {}) {
   if (!saveRecords()) { state.records = previousRecords; return; }
   const resultText = score !== null ? `分数 ${formatScore(score)}` : `${questions} 题，正确率 ${formatAccuracy(correct, questions)}`;
   const paceText = questions ? `，均时 ${formatClock(session.duration / questions).slice(3)}` : '';
-  state.pendingSpeed = null; clearActiveSession(); $('#singleModuleDialog').close(); resetSpeedSaveDialog(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.laps = []; state.lastLapElapsed = 0; renderStats(); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${resultText}${paceText}`);
+  state.pendingSpeed = null; clearActiveSession(); $('#singleModuleDialog').close(); resetSpeedSaveDialog(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.laps = []; state.lastLapElapsed = 0; emitAppEvent(APP_EVENTS.RENDER_STATS); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${resultText}${paceText}`);
   if (savedRecord.laps.length) openLapDetail(savedRecord.id);
 }
 
@@ -204,7 +203,7 @@ function saveSession(questions, papers = null, correct = null, score = null, lap
   state.records.unshift(savedRecord);
   state.records = capRecords(state.records);
   if (!saveRecords()) { state.records = previousRecords; return null; }
-  renderStats(); return savedRecord;
+  emitAppEvent(APP_EVENTS.RENDER_STATS); return savedRecord;
 }
 
 export { cancelSpeedSession, finalizeSpeedSession, finishSpeedSession, resumeSpeedReviewStep, saveSession, showSpeedNextStep, showSpeedPreviousStep };

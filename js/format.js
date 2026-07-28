@@ -1,5 +1,3 @@
-import { getDateStamp } from './stats.js';
-
 function formatClock(total) {
   total = Math.max(0, Math.round(total));
   const h = Math.floor(total / 3600), m = Math.floor(total % 3600 / 60), s = total % 60;
@@ -28,6 +26,9 @@ function parseDateKey(key) {
   const date = new Date(year, month - 1, day);
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
 }
+function getDateStamp(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
 function getTodayKey() { return getDateStamp(new Date()); }
 
-export { formatAccuracy, formatClock, formatDuration, formatScore, formatShortClock, getTodayKey, parseDateKey };
+export { formatAccuracy, formatClock, formatDuration, formatScore, formatShortClock, getDateStamp, getTodayKey, parseDateKey };

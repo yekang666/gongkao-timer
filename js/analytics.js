@@ -1,8 +1,8 @@
 import { $, $$, ANALYTICS_COLORS, MOCK_PACING_QUESTION_COUNTS, PRESETS, SECTION_QUESTION_COUNTS, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, normalizeModuleResults, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
+import { APP_EVENTS, emitAppEvent } from './app-events.js';
 import { formatAccuracy, formatClock, formatDuration, formatScore } from './format.js';
+import { getAccuracyTotals, hasAccuracy } from './metrics.js';
 import { getOrderedSectionPresets } from './sections.js';
-import { renderStats } from './stats.js';
-import { getAccuracyTotals, hasAccuracy } from './timer.js';
 import { openDrawer } from './ui.js';
 
 function getPeriodRecords(days, offset = 0, now = new Date()) {
@@ -11,7 +11,17 @@ function getPeriodRecords(days, offset = 0, now = new Date()) {
   return state.records.filter(record => { const date = new Date(record.endedAt); return Number.isFinite(date.getTime()) && date >= start && date <= end; });
 }
 
+function getRecordsForPeriod(period, now = new Date()) {
+  return period === 'all' ? state.records.filter(record => Number.isFinite(new Date(record.endedAt).getTime())) : getPeriodRecords(period, 0, now);
+}
+
+function getPeriodLabel(period) {
+  return period === 'all' ? '全部记录' : `最近 ${period} 天`;
+}
+
 function getDayKey(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
+function getMonthKey(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; }
+function getYearKey(date) { return String(date.getFullYear()); }
 
 function getModuleAnalytics(records, moduleName) {
   const directRows = records.filter(record => record.module === moduleName);
@@ -47,12 +57,13 @@ function getWeaknessScore(stats, targetPace) {
   return score;
 }
 
-function getModuleAdvice(stats, previous, targetPace) {
+function getModuleAdvice(stats, previous, targetPace, period = 7) {
   const parts = [];
+  const scope = period === 'all' ? '整体' : '近期';
   if (stats.accuracy !== null && stats.accuracyQuestions >= 10 && stats.accuracy < 75) parts.push(`正确率 ${formatAccuracy(stats.accuracy, 100)}，先稳住正确率`);
   else if (stats.pace && targetPace && stats.pace > targetPace * 1.15) parts.push(`题均比时间目标慢 ${Math.round((stats.pace / targetPace - 1) * 100)}%`);
-  else if (stats.stability !== null && stats.stability > .3) parts.push('近期用时波动较大');
-  else parts.push('近期节奏较稳定');
+  else if (stats.stability !== null && stats.stability > .3) parts.push(`${scope}用时波动较大`);
+  else parts.push(`${scope}节奏较稳定`);
   if (stats.pace && previous.pace && previous.questions >= 5) {
     const delta = (stats.pace / previous.pace - 1) * 100;
     if (Math.abs(delta) >= 5) parts.push(`较前期${delta < 0 ? '快' : '慢'} ${Math.abs(Math.round(delta))}%`);
@@ -96,16 +107,18 @@ function renderTrendSummary(metric, totals, currentMetric, activeDays) {
   else $('#trendSummary').innerHTML = `<span><small>平均分</small><strong>${currentMetric.hasData ? formatTrendValue(metric, currentMetric.value) : '暂无'}</strong></span><span><small>模考</small><strong>${totals.scoreCount} 次</strong></span><span><small>有效</small><strong>${activeDays} 天</strong></span>`;
 }
 
-function renderTrendBars(buckets, days, metric, metricName) {
+function renderTrendBars(buckets, period, metric, metricName) {
   const maxValue = metric === 'accuracy' || metric === 'score' ? 100 : Math.max(...buckets.map(bucket => bucket.metric.value), 1), hasAnyData = buckets.some(bucket => bucket.metric.hasData);
   $('#trendChart').dataset.visual = 'bar';
-  $('#trendChart').innerHTML = `<div class="trend-bars days-${days} metric-${metric}">${buckets.map((bucket, index) => {
+  const bucketCount = buckets.length, minWidth = period === 'all' ? Math.max(0, bucketCount * 24) : 0;
+  $('#trendChart').innerHTML = `<div class="trend-bars period-${period} metric-${metric}"${minWidth ? ` style="grid-template-columns:repeat(${bucketCount},minmax(12px,1fr));min-width:${minWidth}px"` : ''}>${buckets.map((bucket, index) => {
     const ratio = bucket.metric.hasData ? Math.max(3, bucket.metric.value / maxValue * 100) : 0;
-    const showLabel = days === 7 || index === 0 || index === days - 1 || (index % 7 === 0 && index < days - 2), label = `${bucket.date.getMonth() + 1}/${bucket.date.getDate()}`;
+    const labelStep = Math.max(1, Math.ceil(bucketCount / 6));
+    const showLabel = bucketCount <= 8 || index === 0 || index === bucketCount - 1 || index % labelStep === 0, label = bucket.label;
     const detail = metric === 'accuracy' ? `${formatTrendValue(metric, bucket.metric.value)} · ${bucket.totals.accuracyQuestions} 题` : metric === 'score' ? `${formatTrendValue(metric, bucket.metric.value)} · ${bucket.totals.scoreCount} 次` : formatTrendValue(metric, bucket.metric.value);
     const accessibleDetail = `${label} · ${bucket.metric.hasData ? detail : '暂无数据'}`;
     return `<div class="trend-day${bucket.metric.hasData ? '' : ' no-data'}" role="img" aria-label="${escapeAttribute(accessibleDetail)}" title="${escapeAttribute(accessibleDetail)}"><div class="trend-bar-track"><i style="height:${ratio}%"></i></div><small>${showLabel ? label : ''}</small></div>`;
-  }).join('')}</div>${hasAnyData ? '' : `<div class="trend-empty-overlay">最近 ${days} 天暂无${metricName}数据</div>`}`;
+  }).join('')}</div>${hasAnyData ? '' : `<div class="trend-empty-overlay">${getPeriodLabel(period)}暂无${metricName}数据</div>`}`;
 }
 
 function getTrendComposition(records, metric) {
@@ -126,10 +139,10 @@ function getTrendComposition(records, metric) {
   return [...values].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
 }
 
-function renderTrendDonut(records, metric, metricName, days) {
+function renderTrendDonut(records, metric, metricName, period) {
   const segments = getTrendComposition(records, metric), total = segments.reduce((sum, item) => sum + item.value, 0), chart = $('#trendChart');
   chart.dataset.visual = 'donut';
-  if (!segments.length || !total) { chart.innerHTML = `<div class="trend-empty-overlay">最近 ${days} 天暂无${metricName}构成数据</div>`; return; }
+  if (!segments.length || !total) { chart.innerHTML = `<div class="trend-empty-overlay">${getPeriodLabel(period)}暂无${metricName}构成数据</div>`; return; }
   let progress = 0;
   const colored = segments.map((item, index) => {
     const start = progress, percent = item.value / total * 100; progress += percent;
@@ -152,42 +165,71 @@ function getRadarModules(records) {
   }).filter(Boolean);
 }
 
-function renderTrendRadar(records, days) {
+function renderTrendRadar(records, period) {
   const modules = getRadarModules(records), chart = $('#trendChart'); chart.dataset.visual = 'radar';
-  if (!modules.length) { chart.innerHTML = `<div class="trend-empty-overlay">最近 ${days} 天暂无专项训练数据</div>`; $('#trendSummary').innerHTML = `<span><small>覆盖专项</small><strong>0 个</strong></span><span><small>综合状态</small><strong>暂无</strong></span><span><small>达标专项</small><strong>0 个</strong></span>`; return; }
+  if (!modules.length) { chart.innerHTML = `<div class="trend-empty-overlay">${getPeriodLabel(period)}暂无专项训练数据</div>`; $('#trendSummary').innerHTML = `<span><small>覆盖专项</small><strong>0 个</strong></span><span><small>综合状态</small><strong>暂无</strong></span><span><small>达标专项</small><strong>0 个</strong></span>`; return; }
   const size = 280, cx = 140, cy = 132, radius = 83, pointAt = (index, distance) => { const angle = -Math.PI / 2 + index * Math.PI * 2 / modules.length; return [cx + Math.cos(angle) * distance, cy + Math.sin(angle) * distance]; }, polygon = (ratio) => modules.map((_, index) => pointAt(index, radius * ratio).join(',')).join(' '), area = modules.map((module, index) => pointAt(index, radius * module.score / 100).join(',')).join(' '), average = modules.reduce((sum, module) => sum + module.score, 0) / modules.length, reached = modules.filter(module => module.score >= 75).length;
   $('#trendSummary').innerHTML = `<span><small>覆盖专项</small><strong>${modules.length} 个</strong></span><span><small>综合状态</small><strong>${Math.round(average)} 分</strong></span><span><small>达标专项</small><strong>${reached} 个</strong></span>`;
   chart.innerHTML = `<div class="radar-layout"><svg class="radar-chart" viewBox="0 0 ${size} 260" role="img" aria-label="专项综合状态雷达图">${[.25, .5, .75, 1].map(level => `<polygon points="${polygon(level)}" class="radar-grid"></polygon>`).join('')}${modules.map((module, index) => { const [x, y] = pointAt(index, radius); const [labelX, labelY] = pointAt(index, radius + 22); return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" class="radar-axis"></line><text x="${labelX}" y="${labelY}" text-anchor="middle">${escapeHTML(module.name)}</text>`; }).join('')}<polygon points="${area}" class="radar-area"></polygon>${modules.map((module, index) => { const [x, y] = pointAt(index, radius * module.score / 100); return `<circle cx="${x}" cy="${y}" r="4" class="radar-point"><title>${escapeHTML(`${module.name} · 综合 ${Math.round(module.score)} 分`)}</title></circle>`; }).join('')}</svg><div class="radar-legend">${modules.map(module => `<div><strong>${escapeHTML(module.name)}</strong><span>综合 ${Math.round(module.score)} 分${module.accuracy !== null ? ` · 正确率 ${Math.round(module.accuracy)}%` : ''}</span></div>`).join('')}</div></div>`;
 }
 
+function buildTrendBuckets(records, period, now) {
+  let buckets, getKey;
+  if (period !== 'all') {
+    buckets = Array.from({ length: period }, (_, index) => {
+      const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - period + index + 1);
+      return { date, key: getDayKey(date), label: `${date.getMonth() + 1}/${date.getDate()}`, records: [] };
+    });
+    getKey = getDayKey;
+  } else {
+    const dates = records.map(record => new Date(record.endedAt)).filter(date => Number.isFinite(date.getTime())).sort((a, b) => a - b);
+    if (!dates.length) return [];
+    const first = dates[0], last = dates[dates.length - 1], spanDays = Math.max(1, Math.ceil((last - first) / 86400000));
+    buckets = [];
+    if (spanDays <= 90) {
+      const cursor = new Date(first); cursor.setHours(0, 0, 0, 0);
+      const end = new Date(last); end.setHours(0, 0, 0, 0);
+      while (cursor <= end) { const date = new Date(cursor); buckets.push({ date, key: getDayKey(date), label: `${date.getMonth() + 1}/${date.getDate()}`, records: [] }); cursor.setDate(cursor.getDate() + 1); }
+      getKey = getDayKey;
+    } else if (spanDays <= 1095) {
+      const cursor = new Date(first.getFullYear(), first.getMonth(), 1), end = new Date(last.getFullYear(), last.getMonth(), 1);
+      while (cursor <= end) { const date = new Date(cursor); buckets.push({ date, key: getMonthKey(date), label: `${date.getFullYear()}/${date.getMonth() + 1}`, records: [] }); cursor.setMonth(cursor.getMonth() + 1); }
+      getKey = getMonthKey;
+    } else {
+      for (let year = first.getFullYear(); year <= last.getFullYear(); year += 1) buckets.push({ date: new Date(year, 0, 1), key: String(year), label: String(year), records: [] });
+      getKey = getYearKey;
+    }
+  }
+  const byKey = new Map(buckets.map(bucket => [bucket.key, bucket]));
+  records.forEach(record => { const bucket = byKey.get(getKey(new Date(record.endedAt))); if (bucket) bucket.records.push(record); });
+  return buckets;
+}
+
 function renderTrainingTrend(now) {
-  const days = state.analyticsDays, metric = state.trendMetric, visual = state.trendVisual, current = getPeriodRecords(days, 0, now), previous = getPeriodRecords(days, 1, now);
-  const buckets = Array.from({ length: days }, (_, index) => {
-    const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - days + index + 1);
-    return { date, key: getDayKey(date), records: [] };
-  }), byKey = new Map(buckets.map(bucket => [bucket.key, bucket]));
-  current.forEach(record => { const bucket = byKey.get(getDayKey(new Date(record.endedAt))); if (bucket) bucket.records.push(record); });
+  const period = state.trendPeriod, metric = state.trendMetric, visual = state.trendVisual, current = getRecordsForPeriod(period, now), previous = period === 'all' ? [] : getPeriodRecords(period, 1, now);
+  const buckets = buildTrendBuckets(current, period, now);
   buckets.forEach(bucket => { bucket.totals = createTrendTotals(bucket.records); bucket.metric = getTrendValue(bucket.totals, metric); });
-  const totals = createTrendTotals(current), previousTotals = createTrendTotals(previous), currentMetric = getTrendValue(totals, metric), previousMetric = getTrendValue(previousTotals, metric), activeDays = buckets.filter(bucket => bucket.metric.hasData).length, metricNames = { duration: '训练时长', questions: '刷题数量', accuracy: '正确率', score: '模考成绩' }, metricName = metricNames[metric], visualNames = { bar: '按日变化', donut: '结构占比', radar: '专项综合' };
+  const totals = createTrendTotals(current), previousTotals = createTrendTotals(previous), currentMetric = getTrendValue(totals, metric), previousMetric = getTrendValue(previousTotals, metric), activeDays = new Set(current.map(record => getDayKey(new Date(record.endedAt)))).size, metricNames = { duration: '训练时长', questions: '刷题数量', accuracy: '正确率', score: '模考成绩' }, metricName = metricNames[metric], visualNames = { bar: period === 'all' ? '历史变化' : '按日变化', donut: '结构占比', radar: '专项综合' }, periodLabel = getPeriodLabel(period);
   $('#trendMetricSwitch').classList.toggle('hidden', visual === 'radar');
-  if (!currentMetric.hasData) $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 暂无${metricName}数据 · ${visualNames[visual]}`;
-  else if (!previousMetric.hasData) $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 暂无上一周期基准 · ${visualNames[visual]}`;
+  if (!currentMetric.hasData) $('#trendPeriodSummary').textContent = `${periodLabel} · 暂无${metricName}数据 · ${visualNames[visual]}`;
+  else if (period === 'all') $('#trendPeriodSummary').textContent = `${periodLabel} · ${current.length} 次训练 · ${visualNames[visual]}`;
+  else if (!previousMetric.hasData) $('#trendPeriodSummary').textContent = `${periodLabel} · 暂无上一周期基准 · ${visualNames[visual]}`;
   else if (metric === 'accuracy' || metric === 'score') {
     const delta = currentMetric.value - previousMetric.value, unit = metric === 'accuracy' ? ' 个百分点' : ' 分';
-    $('#trendPeriodSummary').textContent = `${Math.abs(delta) < .1 ? `最近 ${days} 天 · 与前期基本持平` : `最近 ${days} 天 · 较前期${delta > 0 ? '提升' : '下降'} ${Math.abs(Math.round(delta * 10) / 10)}${unit}`} · ${visualNames[visual]}`;
+    $('#trendPeriodSummary').textContent = `${Math.abs(delta) < .1 ? `${periodLabel} · 与前期基本持平` : `${periodLabel} · 较前期${delta > 0 ? '提升' : '下降'} ${Math.abs(Math.round(delta * 10) / 10)}${unit}`} · ${visualNames[visual]}`;
   } else {
     const delta = (currentMetric.value / previousMetric.value - 1) * 100;
-    $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 较前期${delta >= 0 ? '增加' : '减少'} ${Math.abs(Math.round(delta))}% · ${visualNames[visual]}`;
+    $('#trendPeriodSummary').textContent = `${periodLabel} · 较前期${delta >= 0 ? '增加' : '减少'} ${Math.abs(Math.round(delta))}% · ${visualNames[visual]}`;
   }
-  if (visual === 'radar') $('#trendPeriodSummary').textContent = `最近 ${days} 天 · 速度、正确率与稳定性 · 专项综合`;
+  if (visual === 'radar') $('#trendPeriodSummary').textContent = `${periodLabel} · 速度、正确率与稳定性 · 专项综合`;
   renderTrendSummary(metric, totals, currentMetric, activeDays);
-  if (visual === 'donut') renderTrendDonut(current, metric, metricName, days);
-  else if (visual === 'radar') renderTrendRadar(current, days);
-  else renderTrendBars(buckets, days, metric, metricName);
+  if (visual === 'donut') renderTrendDonut(current, metric, metricName, period);
+  else if (visual === 'radar') renderTrendRadar(current, period);
+  else renderTrendBars(buckets, period, metric, metricName);
 }
 
 function renderModuleBaselines(now) {
-  const days = state.analyticsDays, current = getPeriodRecords(days, 0, now), previous = getPeriodRecords(days, 1, now);
+  const period = state.baselinePeriod, current = getRecordsForPeriod(period, now), previous = period === 'all' ? [] : getPeriodRecords(period, 1, now);
   const analytics = PRESETS.section.map(preset => {
     const stats = getModuleAnalytics(current, preset.name), previousStats = getModuleAnalytics(previous, preset.name);
     const targetQuestions = MOCK_PACING_QUESTION_COUNTS[preset.name] || SECTION_QUESTION_COUNTS[preset.name], targetPace = targetQuestions ? preset.seconds / targetQuestions : null;
@@ -196,7 +238,7 @@ function renderModuleBaselines(now) {
   const sufficient = analytics.filter(item => item.weakness >= 0).sort((a, b) => b.weakness - a.weakness), priority = sufficient[0]?.weakness >= 8 ? sufficient[0].preset.name : null;
   $('#baselineList').innerHTML = sufficient.length ? sufficient.map(item => {
     const { preset, stats, previousStats, targetPace } = item, paceGoal = stats.pace && targetPace ? (stats.pace <= targetPace ? '达到目标' : `慢 ${Math.round((stats.pace / targetPace - 1) * 100)}%`) : '暂无目标对比';
-    return `<article class="baseline-card${preset.name === priority ? ' priority' : ''}"><div class="baseline-heading"><strong>${preset.name}</strong>${preset.name === priority ? '<em>优先提升</em>' : ''}<span>${stats.sessions} 次 · ${stats.questions} 题</span></div><div class="baseline-metrics"><span><small>题均</small><strong>${stats.pace ? formatClock(stats.pace).slice(3) : '暂无'}</strong><i>${paceGoal}</i></span><span><small>正确率</small><strong>${stats.accuracy !== null ? formatAccuracy(stats.accuracy, 100) : '暂无'}</strong><i>${stats.accuracyQuestions} 题样本</i></span><span><small>稳定性</small><strong>${getStabilityLabel(stats.stability, stats.paces.length)}</strong><i>${stats.paces.length} 次样本</i></span></div><p>${getModuleAdvice(stats, previousStats, targetPace)}</p></article>`;
+    return `<article class="baseline-card${preset.name === priority ? ' priority' : ''}"><div class="baseline-heading"><strong>${preset.name}</strong>${preset.name === priority ? '<em>优先提升</em>' : ''}<span>${stats.sessions} 次 · ${stats.questions} 题</span></div><div class="baseline-metrics"><span><small>题均</small><strong>${stats.pace ? formatClock(stats.pace).slice(3) : '暂无'}</strong><i>${paceGoal}</i></span><span><small>正确率</small><strong>${stats.accuracy !== null ? formatAccuracy(stats.accuracy, 100) : '暂无'}</strong><i>${stats.accuracyQuestions} 题样本</i></span><span><small>稳定性</small><strong>${getStabilityLabel(stats.stability, stats.paces.length)}</strong><i>${stats.paces.length} 次样本</i></span></div><p>${getModuleAdvice(stats, previousStats, targetPace, period)}</p></article>`;
   }).join('') : '<div class="analytics-empty">每个专项至少完成 2 次且累计 5 题后，才会生成个人基准。</div>';
   const insufficient = analytics.filter(item => item.weakness < 0 && item.stats.sessions).map(item => item.preset.name);
   $('#baselineDataNote').classList.toggle('hidden', !insufficient.length || !sufficient.length);
@@ -204,13 +246,13 @@ function renderModuleBaselines(now) {
 }
 
 function renderReasonTrends(now) {
-  const records = getPeriodRecords(state.analyticsDays, 0, now), counts = {};
+  const records = getRecordsForPeriod(state.reasonPeriod, now), counts = {};
   let wrong = 0;
   records.forEach(record => normalizeLapReviews(record.lapReviews, normalizeLaps(record.laps).length).forEach(review => {
     if (review?.status !== 'wrong') return; wrong += 1; if (review.reason) counts[review.reason] = (counts[review.reason] || 0) + 1;
   }));
   const ranked = Object.keys(counts).sort((a, b) => counts[b] - counts[a]), max = Math.max(...ranked.map(reason => counts[reason]), 1), reasonTotal = ranked.reduce((sum, reason) => sum + counts[reason], 0);
-  $('#reasonTrendList').innerHTML = ranked.length ? `<p class="reason-insight">最常见错因：<strong>${ranked[0]}</strong> · ${counts[ranked[0]]} 题</p>${ranked.map(reason => `<div class="reason-trend-row"><span>${reason}</span><div><i style="width:${counts[reason] / max * 100}%"></i></div><strong>${counts[reason]} 题 · ${Math.round(counts[reason] / reasonTotal * 100)}%</strong></div>`).join('')}` : `<div class="analytics-empty">${wrong ? `已标记 ${wrong} 道错题，但尚未填写具体错因。` : '完成逐题错误标记后，这里会汇总具体错因。'}</div>`;
+  $('#reasonTrendList').innerHTML = ranked.length ? `<p class="reason-insight">最常见错因：<strong>${escapeHTML(ranked[0])}</strong> · ${counts[ranked[0]]} 题</p>${ranked.map(reason => `<div class="reason-trend-row"><span>${escapeHTML(reason)}</span><div><i style="width:${counts[reason] / max * 100}%"></i></div><strong>${counts[reason]} 题 · ${Math.round(counts[reason] / reasonTotal * 100)}%</strong></div>`).join('')}` : `<div class="analytics-empty">${wrong ? `已标记 ${wrong} 道错题，但尚未填写具体错因。` : '完成逐题错误标记后，这里会汇总具体错因。'}</div>`;
 }
 
 function getHistoryBenchmark(record) {
@@ -235,11 +277,12 @@ function getHistoryBenchmark(record) {
 }
 
 function renderPersonalAnalytics(now) {
-  $$('[data-analytics-days]').forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.analyticsDays) === state.analyticsDays)));
+  $$('[data-trend-period]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.trendPeriod === String(state.trendPeriod))));
+  $$('[data-baseline-period]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.baselinePeriod === String(state.baselinePeriod))));
   $$('[data-trend-metric]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.trendMetric === state.trendMetric)));
   $$('[data-trend-visual]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.trendVisual === state.trendVisual)));
-  $('#baselinePeriodSummary').textContent = `最近 ${state.analyticsDays} 天 · 速度 / 正确率 / 稳定性`;
-  $('#reasonPeriodSummary').textContent = `最近 ${state.analyticsDays} 天 · 仅统计逐题错误标记`;
+  $('#baselinePeriodSummary').textContent = `${getPeriodLabel(state.baselinePeriod)} · 速度 / 正确率 / 稳定性`;
+  $('#reasonPeriodSummary').textContent = `${getPeriodLabel(state.reasonPeriod)} · 仅统计逐题错误标记`;
   renderTrainingTrend(now); renderModuleBaselines(now); renderReasonTrends(now);
 }
 
@@ -259,7 +302,7 @@ function setSettingsView(view, shouldScroll = true) {
   if (shouldScroll && $('#settingsDrawer').classList.contains('open')) $('#settingsDrawer').scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function openStatsDrawer() { renderStats(); setStatsView(state.statsView, false); openDrawer($('#statsDrawer')); }
+function openStatsDrawer() { emitAppEvent(APP_EVENTS.RENDER_STATS); setStatsView(state.statsView, false); openDrawer($('#statsDrawer')); }
 function openSettingsDrawer(view = state.settingsView) { setSettingsView(view, false); openDrawer($('#settingsDrawer')); }
 
 export { getHistoryBenchmark, getModuleAnalytics, getPeriodRecords, openSettingsDrawer, openStatsDrawer, renderPersonalAnalytics, setSettingsView, setStatsView };

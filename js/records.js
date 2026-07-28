@@ -1,5 +1,5 @@
+import { APP_EVENTS, emitAppEvent } from './app-events.js';
 import { $, $$, normalizeLaps, normalizeModuleResults, normalizeRecords, normalizeText, saveRecords, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
-import { renderDataManagementSummary, renderStats } from './stats.js';
 import { showToast } from './ui.js';
 
 function toDateTimeLocalValue(value) {
@@ -79,7 +79,7 @@ function saveRecordCreator() {
   const reachedLimit = previousRecords.length >= 500;
   state.records = [record, ...previousRecords].sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt)).slice(0, 500);
   if (!saveRecords()) { state.records = previousRecords; return; }
-  renderStats(); renderDataManagementSummary(); closeRecordCreator();
+  emitAppEvent(APP_EVENTS.RENDER_STATS); closeRecordCreator();
   showToast(reachedLimit ? `已新增${moduleName}记录，已保留最近 500 条` : `已新增${moduleName}训练记录`);
 }
 
@@ -179,7 +179,7 @@ function saveRecordEditor() {
   state.records[index] = nextRecord;
   state.records.sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt));
   if (!saveRecords()) { state.records = previousRecords; return; }
-  renderStats();
+  emitAppEvent(APP_EVENTS.RENDER_STATS);
   closeRecordEditor();
   showToast('训练记录已更新');
 }

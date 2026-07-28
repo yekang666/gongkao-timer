@@ -1,25 +1,11 @@
 import { playBeep, showTimeUpNotice, stopAlertKeepAlive } from './audio.js';
-import { $, $$, MOCK_PACING_QUESTION_COUNTS, PRESETS, SECTION_QUESTION_COUNTS, clearActiveSession, persistActiveSession, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
-import { formatClock, formatDuration, formatShortClock } from './format.js';
-import { beginTimedMeta, openMockModuleReview } from './mock.js';
+import { APP_EVENTS, emitAppEvent } from './app-events.js';
+import { $, $$, PRESETS, SECTION_QUESTION_COUNTS, clearActiveSession, persistActiveSession, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
+import { formatClock, formatDuration } from './format.js';
+import { getMockPacingPlan, isMockPacingActive } from './pacing.js';
 import { syncMobilePipSource, syncNativeVideoTime, updatePip } from './pip.js';
 import { render } from './render.js';
-import { getOrderedSectionPresets } from './sections.js';
-import { finishSpeedSession } from './speed.js';
 import { appConfirm, resetFinishDialog, showToast, stopInterval } from './ui.js';
-
-function hasAccuracy(record) {
-  return toPositiveInt(record.questions) && toNonNegativeInt(record.correct) !== null;
-}
-function getAccuracyTotals(records) {
-  return records.filter(hasAccuracy).reduce((totals, record) => {
-    totals.questions += toPositiveInt(record.questions); totals.correct += toNonNegativeInt(record.correct); return totals;
-  }, { questions: 0, correct: 0 });
-}
-function getScoreAverage(records) {
-  const scores = records.map(record => toScore(record.score)).filter(Number.isFinite);
-  return scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null;
-}
 
 function renderPresets() {
   const list = $('#presetList'); list.innerHTML = '';
@@ -102,35 +88,6 @@ function undoLap() {
   persistActiveSession(true); render(); $('#undoLapBtn').blur(); showToast(`已撤销上一题（${formatClock(removed).slice(3)}）`);
 }
 
-function renderLapPanel() {
-  const count = state.laps.length;
-  const completedDuration = state.laps.reduce((sum, value) => sum + value, 0);
-  const currentDuration = Math.max(0, state.elapsed - state.lastLapElapsed);
-  $('#lapCount').textContent = `${count} 题`;
-  $('#currentLapTime').textContent = formatClock(currentDuration).slice(3);
-  $('#lapAverageTime').textContent = count ? formatClock(completedDuration / count).slice(3) : '暂无';
-  $('#lapBtn').disabled = state.status !== 'running';
-  $('#undoLapBtn').disabled = !count;
-  $('#timerDisplay').classList.toggle('lap-target', state.status === 'running');
-  $('#timerDisplay').title = state.status === 'running' ? '点击记录完成一题' : '';
-  $('#timerDisplay').tabIndex = state.status === 'running' ? 0 : -1;
-  $('#timerDisplay').setAttribute('aria-label', state.status === 'running' ? `计时 ${$('#timerDisplay').textContent}，点击记录完成一题` : `计时 ${$('#timerDisplay').textContent}`);
-}
-
-function isMockPacingActive() {
-  return state.settings.pacing !== false && state.mode === 'mock' && state.preset.name === '行测模考';
-}
-
-function getMockPacingPlan() {
-  const pacingPresets = getOrderedSectionPresets(), configuredTotal = pacingPresets.reduce((sum, preset) => sum + preset.seconds, 0);
-  if (!configuredTotal || state.duration <= 0) return [];
-  let configuredElapsed = 0, questionTotal = 0;
-  return pacingPresets.map((preset, index) => {
-    configuredElapsed += preset.seconds; questionTotal += MOCK_PACING_QUESTION_COUNTS[preset.name] || 0;
-    return { index, module: preset.name, at: state.duration * configuredElapsed / configuredTotal, questions: questionTotal, nextModule: pacingPresets[index + 1]?.name || null };
-  }).slice(0, -1);
-}
-
 function checkMockPacing() {
   if (!isMockPacingActive() || !state.laps.length) return;
   const due = getMockPacingPlan().filter(checkpoint => state.elapsed >= checkpoint.at && !state.pacingNotified.includes(checkpoint.index));
@@ -142,22 +99,9 @@ function checkMockPacing() {
   }
 }
 
-function renderPacingStatus() {
-  const status = $('#pacingStatus');
-  if (!isMockPacingActive()) { status.classList.add('hidden'); return; }
-  const plan = getMockPacingPlan(), next = plan.find(checkpoint => state.elapsed < checkpoint.at);
-  status.classList.remove('hidden');
-  if (next) {
-    const trackingHint = state.laps.length ? `当前 ${state.laps.length} 题` : '打点后判断是否落后';
-    $('#pacingStatusText').textContent = `${formatShortClock(next.at)} 前完成 ${next.module} · 累计 ${next.questions} 题 · ${trackingHint}`;
-  } else {
-    $('#pacingStatusText').textContent = `已进入最后模块 · 当前打点 ${state.laps.length} 题`;
-  }
-}
-
 function requestFinish() {
   if (state.elapsed < 1) return;
-  if (state.mode === 'single') { finishSpeedSession(); return; }
+  if (state.mode === 'single') { emitAppEvent(APP_EVENTS.FINISH_SPEED); return; }
   const endedAt = new Date().toISOString();
   pauseTimer();
   const lapQuestions = state.laps.length || null;
@@ -185,7 +129,7 @@ function saveQuantitySession(questions) {
 }
 
 function openCorrectInputDialog(questions, options = {}) {
-  if (!questions && !options.editableQuestions && !options.score) { beginTimedMeta({ questions: null, papers: null, correct: null, score: null, endedAt: options.endedAt || new Date().toISOString() }); return; }
+  if (!questions && !options.editableQuestions && !options.score) { emitAppEvent(APP_EVENTS.OPEN_TIMED_META, { result: { questions: null, papers: null, correct: null, score: null, endedAt: options.endedAt || new Date().toISOString() } }); return; }
   state.pendingTimed = { step: 'correct', questions, papers: options.papers ?? null, editableQuestions: Boolean(options.editableQuestions), score: Boolean(options.score), endedAt: options.endedAt || options.initial?.endedAt || new Date().toISOString(), metaDraft: options.initial?.metaDraft || null };
   $('#dialogTitle').textContent = options.score ? '填写本次分数' : (options.editableQuestions ? '填写本次正确率' : '填写正确数量');
   $('#dialogMessage').textContent = options.score ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入本次得分。` : (options.editableQuestions ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入完成题数和正确数量。` : `本次共 ${questions} 题，请输入做对的题数。`);
@@ -220,11 +164,11 @@ function saveTimedCorrectSession() {
   $('#finishDialog').close(); resetFinishDialog();
   if (state.pendingTimed.score && state.mode === 'mock' && state.preset.name === '行测模考') {
     const restored = state.pendingMockModuleDraft;
-    if (restored) { restored.result = { ...restored.result, ...result }; openMockModuleReview(restored.result, { pending: restored }); }
-    else openMockModuleReview(result);
+    if (restored) { restored.result = { ...restored.result, ...result }; emitAppEvent(APP_EVENTS.OPEN_MOCK_REVIEW, { result: restored.result, options: { pending: restored } }); }
+    else emitAppEvent(APP_EVENTS.OPEN_MOCK_REVIEW, { result });
     return;
   }
-  state.pendingTimed = null; beginTimedMeta(result, { kind: 'finish' });
+  state.pendingTimed = null; emitAppEvent(APP_EVENTS.OPEN_TIMED_META, { result, previous: { kind: 'finish' } });
 }
 
-export { confirmFinish, getAccuracyTotals, getScoreAverage, hasAccuracy, openCorrectInputDialog, recordLap, renderLapPanel, renderPacingStatus, renderPresets, requestFinish, resetTimer, saveQuantitySession, selectPreset, setMode, startOrPause, tick, undoLap };
+export { confirmFinish, openCorrectInputDialog, recordLap, renderPresets, requestFinish, resetTimer, saveQuantitySession, selectPreset, setMode, startOrPause, tick, undoLap };

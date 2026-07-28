@@ -1,4 +1,4 @@
-import { showToast } from './ui.js';
+import { APP_EVENTS, emitAppEvent } from './app-events.js';
 
 const PRESETS = {
   mock: [
@@ -19,7 +19,7 @@ function $$(selector) { return [...document.querySelectorAll(selector)]; }
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
 const STORAGE_SESSION = 'examTimer.activeSession.v1';
-const APP_VERSION = 'v2.26.4';
+const APP_VERSION = 'v2.27.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
@@ -44,7 +44,7 @@ const state = {
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
   laps: [], lastLapElapsed: 0, pacingNotified: [], pendingImport: null,
-  pendingSpeed: null, pendingTimed: null, pendingMeta: null, pendingMockModuleDraft: null, reviewingRecordId: null, editingRecordId: null, lapReviewDraft: [], analyticsDays: 7, trendMetric: 'duration', trendVisual: 'bar', statsView: 'overview', settingsView: 'general', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
+  pendingSpeed: null, pendingTimed: null, pendingMeta: null, pendingMockModuleDraft: null, reviewingRecordId: null, editingRecordId: null, lapReviewDraft: [], trendPeriod: 7, baselinePeriod: 7, reasonPeriod: 7, historyPeriod: 30, historyPage: 1, trendMetric: 'duration', trendVisual: 'bar', statsView: 'overview', settingsView: 'general', records: normalizeRecords(loadJSON(STORAGE_RECORDS, [])),
   settings: { sound: true, pacing: true, shortcuts: true, focusSound: {}, dark: false, fontSize: 1, warning: 60, examCountdown: {}, ...loadJSON(STORAGE_SETTINGS, {}) }
 };
 
@@ -186,7 +186,7 @@ function saveToStorage(key, value, label) {
     return true;
   } catch (error) {
     console.error(`${label}保存失败`, error);
-    showToast(`${label}保存失败，请先导出备份并清理浏览器存储空间`);
+    emitAppEvent(APP_EVENTS.STORAGE_ERROR, `${label}保存失败，请先导出备份并清理浏览器存储空间`);
     return false;
   }
 }

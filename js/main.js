@@ -1,18 +1,57 @@
 import { openSettingsDrawer, openStatsDrawer, setSettingsView, setStatsView } from './analytics.js';
+import { APP_EVENTS, onAppEvent } from './app-events.js';
 import { maybeResumeFocusSound, setFocusSoundType, setFocusSoundVolume, stopAlertKeepAlive, stopFocusSound, toggleFocusSound, warmUpAlertSound } from './audio.js';
 import { cancelRestoreImport, confirmRestoreImport, importDataFile } from './backup.js';
 import { applyLaunchShortcut } from './launch.js';
 import { $, $$, persistActiveSession, restoreActiveSession, saveRecords, saveSettings, state } from './core.js';
 import { checkInExamCountdown, openExamCountdownSettings, saveExamCountdownSettings } from './exam.js';
-import { editMockReport, finishMockModuleReview, finishTrainingMeta, openReportLapReview, returnFromMockModuleReview, returnToTrainingPreviousStep } from './mock.js';
+import { beginTimedMeta, editMockReport, finishMockModuleReview, finishTrainingMeta, openMockModuleReview, openMockReport, openReportLapReview, openTrainingMetaDialog, returnFromMockModuleReview, returnToTrainingPreviousStep } from './mock.js';
 import { pipVideo, stopMobilePipSyncLoop, stopPipFrames, syncNativeVideoTime, togglePip } from './pip.js';
 import { closeRecordCreator, closeRecordEditor, openRecordCreator, openRecordFromHistoryEvent, openRecordFromHistoryKey, saveRecordCreator, saveRecordEditor, setDifficultyChoice } from './records.js';
 import { closeLapDetail, render, saveLapReviews, updateLapReviewFromClick, updateLapReviewNote } from './render.js';
 import { applyCustomDurations, beginSectionSort, finishSectionSort, moveSectionCard, moveSectionSort, renderSectionTimeSettings, saveSectionTimes, sectionSort } from './sections.js';
-import { cancelSpeedSession, showSpeedNextStep, showSpeedPreviousStep } from './speed.js';
-import { applySettings, cancelTrainingMetaDialog, exportData, exportRecordsCsv, handleGlobalShortcut, renderDataManagementSummary, renderStats } from './stats.js';
+import { cancelSpeedSession, finishSpeedSession, showSpeedNextStep, showSpeedPreviousStep } from './speed.js';
+import { applySettings, exportData, exportRecordsCsv, handleGlobalShortcut, renderDataManagementSummary, renderStats } from './stats.js';
 import { confirmFinish, recordLap, renderPresets, requestFinish, resetTimer, saveQuantitySession, setMode, startOrPause, tick, undoLap } from './timer.js';
 import { appConfirm, closeDrawers, resetFinishDialog, showToast, stopInterval } from './ui.js';
+
+function runShortcutAction(action) {
+  const actions = {
+    toggle: startOrPause,
+    finish: requestFinish,
+    reset: () => resetTimer(true),
+    lap: recordLap,
+    undoLap,
+    stats: openStatsDrawer,
+    settings: () => openSettingsDrawer(),
+    shortcutHelp: () => openSettingsDrawer('shortcuts')
+  };
+  actions[action]?.();
+}
+
+function parseStatsPeriod(value) {
+  return value === 'all' ? 'all' : Number(value);
+}
+
+function cancelTrainingMetaDialog() {
+  if (state.pendingMeta?.previous) { returnToTrainingPreviousStep(); return; }
+  state.pendingMeta = null;
+  $('#trainingMetaDialog').close();
+  render();
+  showToast('已返回计时，当前训练尚未保存');
+}
+
+onAppEvent(APP_EVENTS.EXPORT_DATA, exportData);
+onAppEvent(APP_EVENTS.FINISH_SPEED, finishSpeedSession);
+onAppEvent(APP_EVENTS.OPEN_MOCK_REVIEW, ({ result, options = {} }) => openMockModuleReview(result, options));
+onAppEvent(APP_EVENTS.OPEN_TIMED_META, ({ result, previous = null }) => beginTimedMeta(result, previous));
+onAppEvent(APP_EVENTS.OPEN_TRAINING_META, ({ title, initialMeta = null, showBack = false }) => openTrainingMetaDialog(title, initialMeta, showBack));
+onAppEvent(APP_EVENTS.RENDER_APP, options => options?.resetTimer ? resetTimer(false) : render());
+onAppEvent(APP_EVENTS.RENDER_PRESETS, renderPresets);
+onAppEvent(APP_EVENTS.RENDER_STATS, renderStats);
+onAppEvent(APP_EVENTS.RESUME_FOCUS_SOUND, maybeResumeFocusSound);
+onAppEvent(APP_EVENTS.SHORTCUT_ACTION, runShortcutAction);
+onAppEvent(APP_EVENTS.STORAGE_ERROR, message => showToast(message));
 
 $$('.mode-tab').forEach(tab => tab.addEventListener('click', () => setMode(tab.dataset.mode)));
 $('#startBtn').addEventListener('click', startOrPause); $('#resetBtn').addEventListener('click', () => resetTimer(true)); $('#finishBtn').addEventListener('click', requestFinish);
@@ -66,10 +105,20 @@ $('#saveLapReviewBtn').addEventListener('click', saveLapReviews); $('#closeLapDe
 $('#lapDetailDialog').addEventListener('cancel', event => { event.preventDefault(); closeLapDetail(); });
 $('#statsBtn').addEventListener('click', openStatsDrawer);$('#settingsBtn').addEventListener('click',()=>openSettingsDrawer());$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&appConfirm('确定清空全部训练记录吗？此操作无法撤销。')){const previousRecords=state.records;state.records=[];if(!saveRecords()){state.records=previousRecords;return;}renderStats();}});
-$('#historyFilter').addEventListener('change', renderStats);
-$('#historyList').addEventListener('click', openRecordFromHistoryEvent);
+$('#historyFilter').addEventListener('change', () => { state.historyPage = 1; renderStats(); });
+$('#historyList').addEventListener('click', event => {
+  const mockReport = event.target.closest('[data-mock-report-id]');
+  if (mockReport) { openMockReport(mockReport.dataset.mockReportId); return; }
+  const lapDetail = event.target.closest('[data-lap-id]');
+  if (lapDetail) { openLapDetail(lapDetail.dataset.lapId); return; }
+  openRecordFromHistoryEvent(event);
+});
 $('#historyList').addEventListener('keydown', openRecordFromHistoryKey);
-$$('[data-analytics-days]').forEach(button => button.addEventListener('click', () => { state.analyticsDays = Number(button.dataset.analyticsDays); renderStats(); }));
+$$('[data-trend-period]').forEach(button => button.addEventListener('click', () => { state.trendPeriod = parseStatsPeriod(button.dataset.trendPeriod); renderStats(); }));
+$$('[data-baseline-period]').forEach(button => button.addEventListener('click', () => { state.baselinePeriod = parseStatsPeriod(button.dataset.baselinePeriod); renderStats(); }));
+$$('[data-history-period]').forEach(button => button.addEventListener('click', () => { state.historyPeriod = parseStatsPeriod(button.dataset.historyPeriod); state.historyPage = 1; renderStats(); }));
+$('#historyPrevBtn').addEventListener('click', () => { state.historyPage = Math.max(1, state.historyPage - 1); renderStats(); });
+$('#historyNextBtn').addEventListener('click', () => { state.historyPage += 1; renderStats(); });
 $$('[data-trend-metric]').forEach(button => button.addEventListener('click', () => { state.trendMetric = button.dataset.trendMetric; renderStats(); }));
 $$('[data-trend-visual]').forEach(button => button.addEventListener('click', () => { state.trendVisual = button.dataset.trendVisual; renderStats(); }));
 $$('[data-stats-view]').forEach(button => button.addEventListener('click', () => setStatsView(button.dataset.statsView)));

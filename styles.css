@@ -1301,3 +1301,25 @@ body.dark .backup-banner{background:color-mix(in srgb,var(--warning) 14%,var(--b
 .lap-reason-custom-wrap [data-review-reason]{border-top-right-radius:0;border-bottom-right-radius:0;border-right:0}
 .lap-reason-remove{padding:5px 6px;font-size:10px;line-height:1;border:1px solid var(--line);border-top-left-radius:0;border-bottom-left-radius:0;background:var(--surface);color:var(--muted);cursor:pointer}
 .lap-reason-remove:hover{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 40%,var(--line));background:color-mix(in srgb,var(--danger) 8%,var(--surface))}
+
+/* ===== 数据复盘时间范围与历史分页 ===== */
+.trend-bars.period-7{grid-template-columns:repeat(7,1fr)}
+.trend-bars.period-30{grid-template-columns:repeat(30,1fr);gap:2px}
+.trend-bars.period-30 .trend-day small{transform:translateX(-4px)}
+.trend-chart[data-visual="bar"]{overflow-x:auto;overflow-y:hidden}
+.trend-bars.period-all{height:100%;gap:4px}
+.history-period-bar{display:flex;align-items:center;justify-content:space-between;margin:2px 0 10px}
+.history-pagination{display:flex;align-items:center;justify-content:center;gap:12px;padding:16px 0 2px;border-top:1px solid var(--line)}
+.history-pagination button{min-width:72px;padding:7px 10px;border:1px solid var(--line-strong);background:var(--surface);color:var(--text);cursor:pointer}
+.history-pagination button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.history-pagination button:disabled{opacity:.42;cursor:not-allowed}
+.history-pagination span{min-width:118px;color:var(--muted);font-size:11px;text-align:center;font-variant-numeric:tabular-nums}
+
+@media(max-width:640px){
+  .drawer-section[data-stats-panel="history"]>.section-title>div:first-child{width:100%}
+  .history-period-bar{margin-top:0}
+  .history-period-bar .period-switch{width:100%;display:grid;grid-template-columns:repeat(3,1fr)}
+  .history-pagination{gap:8px}
+  .history-pagination button{min-width:68px;min-height:40px}
+  .history-pagination span{min-width:0;flex:1}
+}

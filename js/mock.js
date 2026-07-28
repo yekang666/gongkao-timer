@@ -1,9 +1,9 @@
+import { APP_EVENTS, emitAppEvent } from './app-events.js';
 import { $, $$, MOCK_PACING_QUESTION_COUNTS, PRESETS, escapeHTML, normalizeLaps, normalizeModuleResults, normalizeTrainingMeta, saveRecords, state, toNonNegativeInt, toScore } from './core.js';
 import { formatAccuracy, formatClock, formatScore, formatShortClock } from './format.js';
 import { openLapDetail } from './render.js';
 import { getOrderedSectionPresets } from './sections.js';
 import { finalizeSpeedSession, resumeSpeedReviewStep, saveSession } from './speed.js';
-import { renderStats } from './stats.js';
 import { openCorrectInputDialog, resetTimer } from './timer.js';
 import { showToast } from './ui.js';
 
@@ -201,7 +201,7 @@ function finishTrainingMeta(skip = false) {
     const previousRecord = { ...record, moduleResults: [...record.moduleResults] };
     record.score = pending.result.score; record.moduleResults = normalizeModuleResults(pending.result.moduleResults); Object.assign(record, meta, { updatedAt: new Date().toISOString() });
     if (!saveRecords()) { Object.assign(record, previousRecord); return; }
-    renderStats(); showToast('模考报告已更新'); openMockReport(record.id);
+    emitAppEvent(APP_EVENTS.RENDER_STATS); showToast('模考报告已更新'); openMockReport(record.id);
   }
 }
 

@@ -1,7 +1,6 @@
 import { setSettingsView } from './analytics.js';
 import { $, normalizeText, saveSettings, state } from './core.js';
-import { getTodayKey, parseDateKey } from './format.js';
-import { getDateStamp } from './stats.js';
+import { getDateStamp, getTodayKey, parseDateKey } from './format.js';
 import { openDrawer, showToast } from './ui.js';
 
 function normalizeExamCountdown(countdown = {}) {

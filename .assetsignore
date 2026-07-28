@@ -1,0 +1,17 @@
+.git
+.git/**
+.wrangler
+.wrangler/**
+.dev.vars*
+.env*
+.gitignore
+.assetsignore
+node_modules
+node_modules/**
+scripts
+scripts/**
+package.json
+package-lock.json
+push-to-github.bat
+README.md
+wrangler.jsonc

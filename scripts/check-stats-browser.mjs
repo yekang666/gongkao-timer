@@ -112,6 +112,11 @@ try {
   const recentHistory = await evaluate(`({ rows:document.querySelectorAll('#historyList .history-row').length, paginationHidden:document.querySelector('#historyPagination').classList.contains('hidden') })`);
   assert(recentHistory.rows === 2 && recentHistory.paginationHidden, 'Seven-day history filter is incorrect');
   await evaluate(`document.querySelector('[data-history-period="all"]').click();`);
+  await evaluate(`window.state.records.forEach((record, index) => { record.module = index < 20 ? '\u8d44\u6599\u5206\u6790' : '\u8a00\u8bed\u7406\u89e3'; }); document.querySelector('[data-history-period="all"]').click(); { const moduleFilter = document.querySelector('#historyModuleFilter'); moduleFilter.value = '\u8d44\u6599\u5206\u6790'; moduleFilter.dispatchEvent(new Event('change')); }`);
+  const moduleHistory = await evaluate(`({ rows:document.querySelectorAll('#historyList .history-row').length, page:state.historyPage, summary:document.querySelector('#historyRangeSummary').textContent, paginationHidden:document.querySelector('#historyPagination').classList.contains('hidden') })`);
+  assert(moduleHistory.rows === 20 && moduleHistory.page === 1 && moduleHistory.summary.includes('\u8d44\u6599\u5206\u6790') && moduleHistory.paginationHidden, 'History module filter did not isolate the selected module');
+  await screenshot('stats-history-module-desktop.png');
+  await evaluate(`{ const moduleFilter = document.querySelector('#historyModuleFilter'); moduleFilter.value = ''; moduleFilter.dispatchEvent(new Event('change')); }`);
   let history = await evaluate(`({ rows:document.querySelectorAll('#historyList .history-row').length, page:state.historyPage, info:document.querySelector('#historyPageInfo').textContent, paginationHidden:document.querySelector('#historyPagination').classList.contains('hidden') })`);
   assert(history.rows === 30 && history.page === 1 && history.info.includes('1 / 3') && !history.paginationHidden, 'History page 1 pagination is incorrect');
   await evaluate(`document.querySelector('#historyNextBtn').click(); document.querySelector('#historyNextBtn').click();`);
@@ -120,13 +125,18 @@ try {
   await screenshot('stats-history-desktop.png');
 
   await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await evaluate(`{ const moduleFilter = document.querySelector('#historyModuleFilter'); moduleFilter.value = '\u8d44\u6599\u5206\u6790'; moduleFilter.dispatchEvent(new Event('change')); }`);
+  await sleep(100);
+  const mobileHistory = await evaluate(`({ rows:document.querySelectorAll('#historyList .history-row').length, toolsFit:document.querySelector('.history-tools').scrollWidth <= document.querySelector('.history-tools').clientWidth })`);
+  assert(mobileHistory.rows === 20 && mobileHistory.toolsFit, 'History module filter does not fit the mobile layout');
+  await screenshot('stats-history-module-mobile.png');
   await evaluate(`document.querySelector('[data-stats-view="baseline"]').click(); document.querySelector('[data-baseline-period="all"]').click();`);
   await sleep(100);
   await screenshot('stats-baseline-mobile.png');
 
   assert(!exceptions.length, `Browser exceptions: ${exceptions.join('; ')}`);
-  console.log(`OK: trend daily=${trend.bars}, monthly=${groupedTrend.bars}, baseline=${baseline.cards} cards, history page 3=${history.rows} rows`);
-  console.log(`Screenshots: ${path.join(SCREENSHOT_DIR, 'stats-history-desktop.png')}, ${path.join(SCREENSHOT_DIR, 'stats-baseline-mobile.png')}`);
+  console.log(`OK: trend daily=${trend.bars}, monthly=${groupedTrend.bars}, baseline=${baseline.cards} cards, module history=${moduleHistory.rows} rows, history page 3=${history.rows} rows`);
+  console.log(`Screenshots: ${path.join(SCREENSHOT_DIR, 'stats-history-module-desktop.png')}, ${path.join(SCREENSHOT_DIR, 'stats-history-module-mobile.png')}, ${path.join(SCREENSHOT_DIR, 'stats-baseline-mobile.png')}`);
 } finally {
   socket?.close();
   browser.kill();

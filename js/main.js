@@ -106,6 +106,7 @@ $('#lapDetailDialog').addEventListener('cancel', event => { event.preventDefault
 $('#statsBtn').addEventListener('click', openStatsDrawer);$('#settingsBtn').addEventListener('click',()=>openSettingsDrawer());$('#backdrop').addEventListener('click',closeDrawers);$$('.close-drawer').forEach(b=>b.addEventListener('click',closeDrawers));
 $('#clearAllBtn').addEventListener('click',()=>{if(state.records.length&&appConfirm('确定清空全部训练记录吗？此操作无法撤销。')){const previousRecords=state.records;state.records=[];if(!saveRecords()){state.records=previousRecords;return;}renderStats();}});
 $('#historyFilter').addEventListener('change', () => { state.historyPage = 1; renderStats(); });
+$('#historyModuleFilter').addEventListener('change', () => { state.historyPage = 1; renderStats(); });
 $('#historyList').addEventListener('click', event => {
   const mockReport = event.target.closest('[data-mock-report-id]');
   if (mockReport) { openMockReport(mockReport.dataset.mockReportId); return; }

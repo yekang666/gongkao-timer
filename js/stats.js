@@ -51,6 +51,21 @@ function recordMatchesHistoryFilter(record, filter) {
   return true;
 }
 
+function syncHistoryModuleFilter() {
+  const select = $('#historyModuleFilter');
+  if (!select) return '';
+  const selectedModule = select.value;
+  const moduleOrder = new Map(TRACKING_CATEGORIES.map((module, index) => [module, index]));
+  const modules = [...new Set(state.records.map(record => String(record.module || '').trim()).filter(Boolean))].sort((a, b) => {
+    const aOrder = moduleOrder.get(a), bOrder = moduleOrder.get(b);
+    if (aOrder !== undefined || bOrder !== undefined) return (aOrder ?? Number.MAX_SAFE_INTEGER) - (bOrder ?? Number.MAX_SAFE_INTEGER);
+    return a.localeCompare(b, 'zh-CN');
+  });
+  select.replaceChildren(new Option('全部模块', ''), ...modules.map(module => new Option(module, module)));
+  if (modules.includes(selectedModule)) select.value = selectedModule;
+  return select.value;
+}
+
 const HISTORY_PAGE_SIZE = 30;
 
 function recordMatchesHistoryPeriod(record, period, now) {
@@ -82,13 +97,13 @@ function renderStats() {
     const accuracyText = analytics.accuracyQuestions ? ` / ${analytics.correct}/${analytics.accuracyQuestions} 正确 / 正确率 ${formatAccuracy(analytics.correct, analytics.accuracyQuestions)}` : '';
     return `<div class="module-row"><strong>${name}</strong><span>${analytics.rows.length ? (timedRows.length ? formatDuration(avg) : '已录入复盘') : '暂无记录'}${paperText}${scoreText}${avgPerQuestion ? ` / 题均 ${formatClock(avgPerQuestion).slice(3)}` : ''}${accuracyText}</span></div>`;
   }).join('');
-  const historyFilter = $('#historyFilter')?.value || '';
-  const filteredRecords = state.records.filter(record => recordMatchesHistoryPeriod(record, state.historyPeriod, now) && recordMatchesHistoryFilter(record, historyFilter));
+  const historyModule = syncHistoryModuleFilter(), historyFilter = $('#historyFilter')?.value || '';
+  const filteredRecords = state.records.filter(record => recordMatchesHistoryPeriod(record, state.historyPeriod, now) && (!historyModule || record.module === historyModule) && recordMatchesHistoryFilter(record, historyFilter));
   const pageCount = Math.max(1, Math.ceil(filteredRecords.length / HISTORY_PAGE_SIZE));
   state.historyPage = Math.min(pageCount, Math.max(1, Math.floor(Number(state.historyPage) || 1)));
   const pageStart = (state.historyPage - 1) * HISTORY_PAGE_SIZE, pageRecords = filteredRecords.slice(pageStart, pageStart + HISTORY_PAGE_SIZE);
   $$('[data-history-period]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.historyPeriod === String(state.historyPeriod))));
-  $('#historyRangeSummary').textContent = `${state.historyPeriod === 'all' ? '全部记录' : `最近 ${state.historyPeriod} 天`} · ${filteredRecords.length} 条`;
+  $('#historyRangeSummary').textContent = `${state.historyPeriod === 'all' ? '全部记录' : `最近 ${state.historyPeriod} 天`}${historyModule ? ` · ${historyModule}` : ''} · ${filteredRecords.length} 条`;
   $('#historyPagination').classList.toggle('hidden', pageCount <= 1);
   $('#historyPageInfo').textContent = `第 ${state.historyPage} / ${pageCount} 页 · 共 ${filteredRecords.length} 条`;
   $('#historyPrevBtn').disabled = state.historyPage <= 1;
@@ -106,7 +121,7 @@ function renderStats() {
     const metaHtml = tags || notePreview || moduleReviewHtml ? `<span class="record-meta-tags">${tags}${moduleReviewHtml}</span>${notePreview ? `<span class="history-note">“${escapeHTML(notePreview)}”</span>` : ''}` : '';
     const benchmark = getHistoryBenchmark(r), benchmarkHtml = benchmark ? `<span class="history-benchmark">相对基准 · ${benchmark}</span>` : '';
     return `<div class="history-row" data-record-id="${escapeAttribute(r.id)}"><button class="history-edit-trigger" data-edit-record-id="${escapeAttribute(r.id)}" type="button" aria-label="修改${escapeAttribute(r.module)}记录"><span class="history-main"><strong>${escapeHTML(r.module)}</strong><span class="history-meta">${new Date(r.endedAt).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${r.papers ? ` · ${r.papers} 套` : ''}${scoreText}${r.questions ? ` · ${r.questions} 题 · 题均 ${formatClock(r.duration/r.questions).slice(3)}` : ''}${accuracyText}</span>${benchmarkHtml}${metaHtml}</span><span class="history-side"><strong class="history-duration">${formatClock(r.duration)}</strong><span>点击编辑</span></span></button><button class="delete-record" data-id="${escapeAttribute(r.id)}" type="button" aria-label="删除${escapeAttribute(r.module)}记录" title="删除记录">×</button>${reportLink || lapLink ? `<div class="history-record-actions">${reportLink}${lapLink}</div>` : ''}</div>`;
-  }).join('') : `<div class="empty-state">${historyFilter || state.historyPeriod !== 'all' ? '这个时间范围内没有符合条件的记录' : '完成一次训练后，记录会显示在这里'}</div>`;
+  }).join('') : `<div class="empty-state">${historyModule || historyFilter || state.historyPeriod !== 'all' ? '这个时间范围内没有符合条件的记录' : '完成一次训练后，记录会显示在这里'}</div>`;
   $$('.delete-record').forEach(btn => btn.addEventListener('click', () => {
     if (!appConfirm('确定删除这条训练记录吗？此操作无法撤销。')) return;
     const previousRecords = state.records;

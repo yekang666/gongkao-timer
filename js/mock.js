@@ -1,5 +1,5 @@
 import { APP_EVENTS, emitAppEvent } from './app-events.js';
-import { $, $$, MOCK_PACING_QUESTION_COUNTS, PRESETS, escapeHTML, normalizeLaps, normalizeModuleResults, normalizeTrainingMeta, saveRecords, state, toNonNegativeInt, toScore } from './core.js';
+import { $, $$, MOCK_MODULE_NAMES, MOCK_PACING_QUESTION_COUNTS, PRESETS, escapeHTML, normalizeLaps, normalizeModuleResults, normalizeTrainingMeta, saveRecords, state, toNonNegativeInt, toScore } from './core.js';
 import { formatAccuracy, formatClock, formatScore, formatShortClock } from './format.js';
 import { openLapDetail } from './render.js';
 import { getOrderedSectionPresets } from './sections.js';
@@ -8,7 +8,7 @@ import { openCorrectInputDialog, resetTimer } from './timer.js';
 import { showToast } from './ui.js';
 
 function getMockModuleReviewPlan(laps = state.laps) {
-  const values = normalizeLaps(laps), orderedPresets = getOrderedSectionPresets();
+  const values = normalizeLaps(laps), orderedPresets = getOrderedSectionPresets().filter(preset => MOCK_MODULE_NAMES.includes(preset.name));
   let cursor = 0;
   return orderedPresets.map(preset => {
     const questions = MOCK_PACING_QUESTION_COUNTS[preset.name], moduleLaps = values.slice(cursor, cursor + questions);
@@ -102,7 +102,7 @@ function finalizeTimedSession(questions, papers, correct = null, score = null, m
 
 function getMockReportRows(record) {
   const savedResults = normalizeModuleResults(record.moduleResults), savedByModule = new Map(savedResults.map(result => [result.module, result]));
-  const savedOrder = savedResults.map(result => result.module), fallbackOrder = getOrderedSectionPresets().map(preset => preset.name);
+  const savedOrder = savedResults.map(result => result.module), fallbackOrder = getOrderedSectionPresets().map(preset => preset.name).filter(name => MOCK_MODULE_NAMES.includes(name));
   const order = [...savedOrder, ...fallbackOrder.filter(name => !savedOrder.includes(name))];
   return order.map(module => {
     const saved = savedByModule.get(module), preset = PRESETS.section.find(item => item.name === module);

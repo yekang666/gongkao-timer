@@ -1,16 +1,21 @@
 import { APP_EVENTS, emitAppEvent } from './app-events.js';
 
+const XINGCE_SECTION_PRESETS = [
+  { name: '资料分析', seconds: 25 * 60 }, { name: '言语理解', seconds: 30 * 60 },
+  { name: '判断推理', seconds: 35 * 60 }, { name: '数量关系', seconds: 20 * 60 },
+  { name: '政治理论', seconds: 10 * 60 }, { name: '常识判断', seconds: 5 * 60 }
+];
+const ESSAY_SECTION_PRESETS = [
+  { name: '申论概括题', seconds: 20 * 60 }, { name: '分析理解题', seconds: 25 * 60 },
+  { name: '提出对策题', seconds: 30 * 60 }, { name: '公文题', seconds: 25 * 60 }
+];
 const PRESETS = {
   mock: [
     { name: '行测模考', seconds: 120 * 60 },
     { name: '申论省考', seconds: 150 * 60 },
     { name: '申论国考', seconds: 180 * 60 }
   ],
-  section: [
-    { name: '资料分析', seconds: 25 * 60 }, { name: '言语理解', seconds: 30 * 60 },
-    { name: '判断推理', seconds: 35 * 60 }, { name: '数量关系', seconds: 20 * 60 },
-    { name: '政治理论', seconds: 10 * 60 }, { name: '常识判断', seconds: 5 * 60 }
-  ],
+  section: [...XINGCE_SECTION_PRESETS, ...ESSAY_SECTION_PRESETS],
   single: [{ name: '自由测速', seconds: 0 }]
 };
 
@@ -19,11 +24,15 @@ function $$(selector) { return [...document.querySelectorAll(selector)]; }
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
 const STORAGE_SESSION = 'examTimer.activeSession.v1';
-const APP_VERSION = 'v2.27.0';
+const APP_VERSION = 'v2.28.0';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
-const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '政治理论': 20, '常识判断': 15 };
+const XINGCE_MODULE_NAMES = XINGCE_SECTION_PRESETS.map(({ name }) => name);
+const ESSAY_MODULE_NAMES = ESSAY_SECTION_PRESETS.map(({ name }) => name);
+const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '数量关系': 15, '政治理论': 20, '常识判断': 15, '申论概括题': 1, '分析理解题': 1, '提出对策题': 1, '公文题': 1 };
+const XINGCE_QUESTION_COUNTS = Object.fromEntries(XINGCE_MODULE_NAMES.map(name => [name, SECTION_QUESTION_COUNTS[name]]));
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
-const MOCK_MODULE_NAMES = PRESETS.section.map(preset => preset.name);
+const MOCK_MODULE_NAMES = XINGCE_MODULE_NAMES;
+const MOCK_PACING_MODULES = { '行测模考': XINGCE_MODULE_NAMES, '申论省考': ESSAY_MODULE_NAMES, '申论国考': ESSAY_MODULE_NAMES };
 const TRAINING_DIFFICULTIES = ['简单', '正常', '较难'];
 const SPEED_SCORE_TYPES = new Set(PRESETS.mock.map(preset => preset.name));
 const LAP_REVIEW_STATUSES = ['correct', 'wrong', 'skipped'];
@@ -241,4 +250,4 @@ function restoreActiveSession() {
   return true;
 }
 
-export { $, $$, ANALYTICS_COLORS, APP_VERSION, RECORD_LIMIT, capRecords, DEFAULT_SECTION_ORDER, FOCUS_SOUND_TYPES, LAP_ERROR_REASONS, MOCK_MODULE_NAMES, MOCK_PACING_QUESTION_COUNTS, PRESETS, SECTION_QUESTION_COUNTS, SPEED_SCORE_TYPES, STORAGE_RECORDS, STORAGE_SETTINGS, TRACKING_CATEGORIES, clearActiveSession, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, normalizeModuleResults, normalizeRecords, normalizeText, normalizeTrainingMeta, persistActiveSession, restoreActiveSession, saveRecords, saveSettings, state, toNonNegativeInt, toPositiveInt, toScore };
+export { $, $$, ANALYTICS_COLORS, APP_VERSION, ESSAY_MODULE_NAMES, RECORD_LIMIT, capRecords, DEFAULT_SECTION_ORDER, FOCUS_SOUND_TYPES, LAP_ERROR_REASONS, MOCK_MODULE_NAMES, MOCK_PACING_MODULES, MOCK_PACING_QUESTION_COUNTS, PRESETS, SECTION_QUESTION_COUNTS, SPEED_SCORE_TYPES, STORAGE_RECORDS, STORAGE_SETTINGS, TRACKING_CATEGORIES, XINGCE_MODULE_NAMES, XINGCE_QUESTION_COUNTS, clearActiveSession, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, normalizeModuleResults, normalizeRecords, normalizeText, normalizeTrainingMeta, persistActiveSession, restoreActiveSession, saveRecords, saveSettings, state, toNonNegativeInt, toPositiveInt, toScore };

@@ -1,12 +1,13 @@
-import { MOCK_PACING_QUESTION_COUNTS, state } from './core.js';
+import { MOCK_PACING_MODULES, MOCK_PACING_QUESTION_COUNTS, state } from './core.js';
 import { getOrderedSectionPresets } from './sections.js';
 
 function isMockPacingActive() {
-  return state.settings.pacing !== false && state.mode === 'mock' && state.preset.name === '行测模考';
+  return state.settings.pacing !== false && state.mode === 'mock' && Boolean(MOCK_PACING_MODULES[state.preset.name]);
 }
 
 function getMockPacingPlan() {
-  const pacingPresets = getOrderedSectionPresets();
+  const modules = MOCK_PACING_MODULES[state.preset.name] || [];
+  const pacingPresets = getOrderedSectionPresets().filter(preset => modules.includes(preset.name));
   const configuredTotal = pacingPresets.reduce((sum, preset) => sum + preset.seconds, 0);
   if (!configuredTotal || state.duration <= 0) return [];
   let configuredElapsed = 0;

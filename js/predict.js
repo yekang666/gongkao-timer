@@ -1,5 +1,5 @@
 import { getPeriodRecords } from './analytics.js';
-import { $, $$, MOCK_PACING_QUESTION_COUNTS, escapeHTML, normalizeModuleResults, saveSettings, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
+import { $, $$, XINGCE_MODULE_NAMES, XINGCE_QUESTION_COUNTS, escapeHTML, normalizeModuleResults, saveSettings, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
 import { formatAccuracy } from './format.js';
 import { getOrderedSectionPresets, getSectionDurations } from './sections.js';
 import { showToast } from './ui.js';
@@ -9,8 +9,8 @@ import { showToast } from './ui.js';
 const PREDICT_GUESS_RATE = 0.25; // 全卷单选，未答完部分按四选一蒙对率估算
 const PREDICT_WEIGHTS = { '资料分析': 1, '言语理解': 0.8, '判断推理': 23.5 / 35, '数量关系': 1, '政治理论': 0.5, '常识判断': 0.5 };
 const PREDICT_LEVELS = {
-  deputy: { label: '副省级', counts: { ...MOCK_PACING_QUESTION_COUNTS } },
-  city: { label: '地市级', counts: { ...MOCK_PACING_QUESTION_COUNTS, '数量关系': 10 } }
+  deputy: { label: '副省级', counts: { ...XINGCE_QUESTION_COUNTS } },
+  city: { label: '地市级', counts: { ...XINGCE_QUESTION_COUNTS, '数量关系': 10 } }
 };
 const PREDICT_WINDOWS = [
   { days: 30, label: '最近 30 天' },
@@ -67,8 +67,8 @@ function getSampleGrade(questions) {
 // 核心模型：预计得分 = Σ 模块题量 ×（答完部分 × 个人正确率 + 未答完部分 × 蒙对率）× 每题参考分值
 export function buildPrediction(records, plan, now = Date.now()) {
   const durations = getSectionDurations();
-  const totalSectionSeconds = Object.values(durations).reduce((sum, seconds) => sum + seconds, 0);
-  const moduleNames = getOrderedSectionPresets().map(preset => preset.name);
+  const moduleNames = getOrderedSectionPresets().map(preset => preset.name).filter(name => XINGCE_MODULE_NAMES.includes(name));
+  const totalSectionSeconds = moduleNames.reduce((sum, name) => sum + durations[name], 0);
   const pooled = { correctWeight: 0, questionWeight: 0 };
   const stats = Object.fromEntries(moduleNames.map(name => {
     const sample = collectModuleSamples(records, name, now);

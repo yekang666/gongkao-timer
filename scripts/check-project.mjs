@@ -89,9 +89,14 @@ for (const file of moduleFiles) {
   }
 }
 
-const versionFiles = ['js/core.js', 'sw.js', 'index.html', 'README.md'];
-const versions = versionFiles.map(file => [...new Set([...read(file).matchAll(/v\d+\.\d+\.\d+/g)].map(match => match[0]))]);
-assert(versions.every(values => values.length === 1 && values[0] === versions[0][0]), `version mismatch: ${versionFiles.map((file, index) => `${file}=${versions[index].join('|') || 'missing'}`).join(', ')}`);
+const currentVersion = read('js/core.js').match(/const APP_VERSION = '(v\d+\.\d+\.\d+)'/)?.[1];
+const versionMarkers = {
+  'js/core.js': [currentVersion],
+  'sw.js': [read('sw.js').match(/CACHE_NAME = `\$\{CACHE_PREFIX\}(v\d+\.\d+\.\d+)`/)?.[1]],
+  'index.html': [read('index.html').match(/class="version-badge"[^>]*>(v\d+\.\d+\.\d+)<\/span>/)?.[1]],
+  'README.md': [...read('README.md').matchAll(/^当前版本：(v\d+\.\d+\.\d+)$/gm)].map(match => match[1])
+};
+assert(currentVersion && Object.values(versionMarkers).every(values => values.length && values.every(value => value === currentVersion)), `version mismatch: ${Object.entries(versionMarkers).map(([file, values]) => `${file}=${values.filter(Boolean).join('|') || 'missing'}`).join(', ')}`);
 
 if (failures.length) {
   failures.forEach(failure => console.error(`FAIL: ${failure}`));

@@ -1,5 +1,5 @@
 import { APP_EVENTS, emitAppEvent } from './app-events.js';
-import { $, $$, DEFAULT_SECTION_ORDER, PRESETS, saveSettings, state } from './core.js';
+import { $, $$, DEFAULT_SECTION_ORDER, MOCK_PACING_MODULES, PRESETS, saveSettings, state } from './core.js';
 import { showToast } from './ui.js';
 
 function normalizeSectionOrder(order) {
@@ -65,7 +65,9 @@ function moveSectionCard(button) {
 }
 function renderPacingOrderNote(message = '') {
   const note = $('#pacingOrderNote'); if (!note) return;
-  note.textContent = message || `模考顺序：${getOrderedSectionPresets().map(preset => preset.name).join(' → ')}`;
+  const orderedNames = getOrderedSectionPresets().map(preset => preset.name);
+  const formatOrder = mockName => orderedNames.filter(name => MOCK_PACING_MODULES[mockName].includes(name)).join(' → ');
+  note.textContent = message || `行测：${formatOrder('行测模考')}；申论：${formatOrder('申论国考')}`;
 }
 function saveSectionTimes() {
   const section = {};

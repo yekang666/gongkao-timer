@@ -7,7 +7,7 @@ import { normalizeExamCountdown, renderExamCountdown } from './exam.js';
 import { formatAccuracy, formatClock, formatDuration, formatScore, getDateStamp } from './format.js';
 import { getAccuracyTotals, getLapReviewCounts, getScoreAverage, hasAccuracy } from './metrics.js';
 import { renderPrediction } from './predict.js';
-import { getSectionDurationSnapshot, getSectionOrderSnapshot } from './sections.js';
+import { getPacingPlansSnapshot, getSectionDurationSnapshot, getSectionOrderSnapshot } from './sections.js';
 import { appConfirm, showToast } from './ui.js';
 
 function isEditableShortcutTarget(target) {
@@ -142,6 +142,7 @@ function applySettings() {
 
 function buildSettingsSnapshot() {
   const sectionOrder = getSectionOrderSnapshot();
+  const pacingPlans = getPacingPlansSnapshot();
   const sectionDurations = getSectionDurationSnapshot();
   return {
     ...state.settings,
@@ -154,6 +155,7 @@ function buildSettingsSnapshot() {
     warning: Number.isFinite(Number(state.settings.warning)) ? Number(state.settings.warning) : 60,
     examCountdown: normalizeExamCountdown(state.settings.examCountdown),
     sectionOrder,
+    pacingPlans,
     customDurations: { ...(state.settings.customDurations || {}), section: sectionDurations }
   };
 }
@@ -175,6 +177,7 @@ function buildExportData() {
       fontSize: settings.fontSize,
       warning: settings.warning,
       sectionOrder: settings.sectionOrder,
+      pacingPlans: settings.pacingPlans,
       sectionDurations: settings.customDurations.section
     },
     records,

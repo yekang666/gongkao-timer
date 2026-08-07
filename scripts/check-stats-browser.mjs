@@ -70,7 +70,7 @@ try {
   const exceptions = [];
   socket.onmessage = event => {
     const message = JSON.parse(event.data);
-    if (message.method === 'Runtime.exceptionThrown') exceptions.push(message.params.exceptionDetails.text);
+    if (message.method === 'Runtime.exceptionThrown') exceptions.push(message.params.exceptionDetails.exception?.description || message.params.exceptionDetails.text);
     if (message.id && pending.has(message.id)) { pending.get(message.id)(message); pending.delete(message.id); }
   };
   const call = (method, params = {}) => new Promise(resolve => {
@@ -80,7 +80,7 @@ try {
   });
   const evaluate = async expression => {
     const result = await call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-    if (result.result?.exceptionDetails) throw new Error(result.result.exceptionDetails.text);
+    if (result.result?.exceptionDetails) throw new Error(result.result.exceptionDetails.exception?.description || result.result.exceptionDetails.text);
     return result.result.result.value;
   };
   const screenshot = async filename => {
@@ -90,7 +90,9 @@ try {
 
   await call('Runtime.enable');
   await call('Page.enable');
+  await call('Page.reload', { ignoreCache: true });
   for (let attempt = 0; attempt < 20 && !await evaluate('Boolean(window.state)'); attempt += 1) await sleep(100);
+  if (!await evaluate('Boolean(window.state)')) throw new Error(`Browser app did not initialize: ${exceptions.join('; ') || 'no runtime exception captured'}`);
   await evaluate(`window.state.records = Array.from({length:75}, (_, index) => {
     const endedAt = new Date(Date.now() - index * 86400000);
     return { id:'record-' + index, mode:'section', module:'资料分析', duration:600, planned:1500, startedAt:new Date(endedAt - 600000).toISOString(), endedAt:endedAt.toISOString(), questions:10, correct:8, score:null, papers:null, laps:[], lapReviews:[], moduleResults:[], source:'', difficulty:index % 2 ? '正常' : '较难', note:'' };
@@ -142,20 +144,39 @@ try {
   assert(essayPresets.count === 4 && essayPresets.selected === 'essay' && essayPresets.fits && ['\u7533\u8bba\u6982\u62ec\u9898', '\u5206\u6790\u7406\u89e3\u9898', '\u63d0\u51fa\u5bf9\u7b56\u9898', '\u516c\u6587\u9898'].every(name => essayPresets.names.includes(name)), 'Essay section group is incorrect');
   await screenshot('essay-sections-mobile.png');
   await evaluate(`document.querySelector('#settingsBtn').click(); document.querySelector('[data-settings-view="pacing"]').click();`);
-  const pacingSettings = await evaluate(`({ count:document.querySelectorAll('#sectionTimeGrid [data-section-time]').length, names:[...document.querySelectorAll('#sectionTimeGrid [data-section-time]')].map(item => item.dataset.sectionTime) })`);
-  assert(pacingSettings.count === 6 && !pacingSettings.names.includes('\u7533\u8bba\u6982\u62ec\u9898') && pacingSettings.names.includes('\u8d44\u6599\u5206\u6790'), 'Essay modules should not appear in pacing settings');
+  const pacingSettings = await evaluate(`({ group:document.querySelector('#pacingGroupSwitch [aria-pressed="true"]').dataset.pacingGroup, catalog:document.querySelectorAll('#sectionTimeGrid [data-section-time]').length, plan:document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]').length, names:[...document.querySelectorAll('#sectionTimeGrid [data-section-time]')].map(item => item.dataset.sectionTime) })`);
+  assert(pacingSettings.group === 'xingce' && pacingSettings.catalog === 6 && pacingSettings.plan === 6 && pacingSettings.names.includes('\u8d44\u6599\u5206\u6790'), 'Xingce pacing builder is incorrect');
+  await evaluate(`document.querySelector('[data-pacing-remove][data-pacing-name="\u5e38\u8bc6\u5224\u65ad"]').click();`);
+  const removedXingce = await evaluate(`({ plan:document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]').length, addEnabled:!document.querySelector('[data-pacing-add][data-pacing-name="\u5e38\u8bc6\u5224\u65ad"]').disabled })`);
+  assert(removedXingce.plan === 5 && removedXingce.addEnabled, 'Removing an xingce pacing card failed');
+  await evaluate(`document.querySelector('[data-pacing-group="essay"]').click();`);
+  const essayPacingSettings = await evaluate(`({ group:document.querySelector('#pacingGroupSwitch [aria-pressed="true"]').dataset.pacingGroup, catalog:document.querySelectorAll('#sectionTimeGrid [data-section-time]').length, plan:document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]').length })`);
+  assert(essayPacingSettings.group === 'essay' && essayPacingSettings.catalog === 4 && essayPacingSettings.plan === 4, 'Essay pacing builder is incorrect');
+  await evaluate(`document.querySelector('[data-pacing-remove][data-pacing-name="\u516c\u6587\u9898"]').click();`);
+  await evaluate(`{ const card=document.querySelector('[data-pacing-catalog-card][data-pacing-name="\u516c\u6587\u9898"]'); const data=new DataTransfer(); card.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:data})); const zone=document.querySelector('#pacingPlanZone'); zone.dispatchEvent(new DragEvent('dragover',{bubbles:true,dataTransfer:data})); zone.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:data})); card.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:data})); }`);
+  await evaluate(`document.querySelector('[data-pacing-move][data-pacing-name="\u5206\u6790\u7406\u89e3\u9898"][data-pacing-move="-1"]').click();`);
+  const essayPlan = await evaluate(`({ plan:document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]').length, order:[...document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]')].map(item => item.dataset.pacingName), fits:document.querySelector('#pacingPlanZone').scrollWidth <= document.querySelector('#pacingPlanZone').clientWidth && document.querySelector('#sectionTimeGrid').scrollWidth <= document.querySelector('#sectionTimeGrid').clientWidth })`);
+  assert(essayPlan.plan === 4 && essayPlan.order[0] === '\u5206\u6790\u7406\u89e3\u9898' && essayPlan.order.includes('\u516c\u6587\u9898') && essayPlan.fits, 'Essay pacing drag/add/reorder failed or overflowed the mobile layout');
+  await evaluate(`document.querySelector('[data-pacing-group="xingce"]').click();`);
+  const retainedXingcePlan = await evaluate(`({ plan:document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]').length, removed:!document.querySelector('#pacingPlanList [data-pacing-name="\u5e38\u8bc6\u5224\u65ad"]'), addEnabled:!document.querySelector('[data-pacing-add][data-pacing-name="\u5e38\u8bc6\u5224\u65ad"]').disabled })`);
+  assert(retainedXingcePlan.plan === 5 && retainedXingcePlan.removed && retainedXingcePlan.addEnabled, 'Xingce and essay pacing plans did not remain independent');
+  await evaluate(`document.querySelector('[data-pacing-group="essay"]').click();`);
   await screenshot('essay-pacing-mobile.png');
   await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await sleep(100);
   await screenshot('essay-pacing-desktop.png');
   await evaluate(`document.querySelector('#settingsDrawer .close-drawer').click();`);
   await screenshot('essay-sections-desktop.png');
+  await call('Page.reload', { ignoreCache: true });
+  for (let attempt = 0; attempt < 20 && !await evaluate('Boolean(window.state)'); attempt += 1) await sleep(100);
+  const persistedPlans = await evaluate(`({ xingce:state.settings.pacingPlans.xingce, essay:state.settings.pacingPlans.essay })`);
+  assert(persistedPlans.xingce.length === 5 && !persistedPlans.xingce.includes('\u5e38\u8bc6\u5224\u65ad') && persistedPlans.essay[0] === '\u5206\u6790\u7406\u89e3\u9898', 'Pacing plans were not restored after reload');
   await evaluate(`document.querySelector('[data-mode="mock"]').click(); [...document.querySelectorAll('#presetList .preset-button')].find(button => button.textContent.includes('\u7533\u8bba\u56fd\u8003')).click();`);
   const essayPacing = await evaluate(`({ visible:!document.querySelector('#pacingStatus').classList.contains('hidden'), text:document.querySelector('#pacingStatusText').textContent })`);
-  assert(essayPacing.visible && essayPacing.text.includes('\u7533\u8bba\u6982\u62ec\u9898'), 'Essay mock pacing did not start with the summary module');
+  assert(essayPacing.visible && essayPacing.text.includes('\u5206\u6790\u7406\u89e3\u9898'), 'Essay mock pacing did not follow the configured order');
 
   assert(!exceptions.length, `Browser exceptions: ${exceptions.join('; ')}`);
-  console.log(`OK: trend daily=${trend.bars}, monthly=${groupedTrend.bars}, baseline=${baseline.cards} cards, module history=${moduleHistory.rows} rows, xingce presets=${xingcePresets.count}, essay presets=${essayPresets.count}, pacing settings=${pacingSettings.count}`);
+  console.log(`OK: trend daily=${trend.bars}, monthly=${groupedTrend.bars}, baseline=${baseline.cards} cards, module history=${moduleHistory.rows} rows, xingce presets=${xingcePresets.count}, essay presets=${essayPresets.count}, essay plan=${essayPlan.plan}`);
   console.log(`Screenshots: ${path.join(SCREENSHOT_DIR, 'essay-sections-desktop.png')}, ${path.join(SCREENSHOT_DIR, 'essay-sections-mobile.png')}, ${path.join(SCREENSHOT_DIR, 'essay-pacing-desktop.png')}, ${path.join(SCREENSHOT_DIR, 'essay-pacing-mobile.png')}`);
 } finally {
   socket?.close();

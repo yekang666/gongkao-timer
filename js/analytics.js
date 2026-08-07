@@ -1,4 +1,4 @@
-import { $, $$, ANALYTICS_COLORS, MOCK_PACING_QUESTION_COUNTS, PRESETS, SECTION_QUESTION_COUNTS, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, normalizeModuleResults, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
+import { $, $$, ANALYTICS_COLORS, MOCK_PACING_QUESTION_COUNTS, PRESETS, SECTION_QUESTION_COUNTS, XINGCE_MODULE_NAMES, escapeAttribute, escapeHTML, normalizeLapReviews, normalizeLaps, normalizeModuleResults, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
 import { APP_EVENTS, emitAppEvent } from './app-events.js';
 import { formatAccuracy, formatClock, formatDuration, formatScore } from './format.js';
 import { getAccuracyTotals, hasAccuracy } from './metrics.js';
@@ -153,7 +153,9 @@ function renderTrendDonut(records, metric, metricName, period) {
 }
 
 function getRadarModules(records) {
-  return getOrderedSectionPresets().map(preset => {
+  const configuredNames = getOrderedSectionPresets('xingce').map(preset => preset.name);
+  const names = [...configuredNames, ...XINGCE_MODULE_NAMES.filter(name => !configuredNames.includes(name))];
+  return names.map(name => PRESETS.section.find(preset => preset.name === name)).filter(Boolean).map(preset => {
     const stats = getModuleAnalytics(records, preset.name), questions = MOCK_PACING_QUESTION_COUNTS[preset.name] || SECTION_QUESTION_COUNTS[preset.name], targetPace = questions ? preset.seconds / questions : null;
     if (!stats.questions) return null;
     const parts = [];

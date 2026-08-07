@@ -9,7 +9,7 @@ import { beginTimedMeta, editMockReport, finishMockModuleReview, finishTrainingM
 import { pipVideo, stopMobilePipSyncLoop, stopPipFrames, syncNativeVideoTime, togglePip } from './pip.js';
 import { closeRecordCreator, closeRecordEditor, openRecordCreator, openRecordFromHistoryEvent, openRecordFromHistoryKey, saveRecordCreator, saveRecordEditor, setDifficultyChoice } from './records.js';
 import { closeLapDetail, render, saveLapReviews, updateLapReviewFromClick, updateLapReviewNote } from './render.js';
-import { applyCustomDurations, beginSectionSort, finishSectionSort, moveSectionCard, moveSectionSort, renderSectionTimeSettings, saveSectionTimes, sectionSort } from './sections.js';
+import { addPacingPreset, applyCustomDurations, handlePacingDragEnd, handlePacingDragOver, handlePacingDragStart, handlePacingDrop, movePacingPreset, removePacingPreset, renderSectionTimeSettings, saveSectionTimes, setPacingGroup } from './sections.js';
 import { cancelSpeedSession, finishSpeedSession, showSpeedNextStep, showSpeedPreviousStep } from './speed.js';
 import { applySettings, exportData, exportRecordsCsv, handleGlobalShortcut, renderDataManagementSummary, renderStats } from './stats.js';
 import { confirmFinish, recordLap, renderPresets, requestFinish, resetTimer, saveQuantitySession, setMode, setSectionGroup, startOrPause, tick, undoLap } from './timer.js';
@@ -130,26 +130,17 @@ $('#fontSizeRange').addEventListener('input',e=>{state.settings.fontSize=+e.targ
 $('#examCountdownOpenBtn').addEventListener('click', openExamCountdownSettings); $('#examCheckinBtn').addEventListener('click', checkInExamCountdown);
 $('#saveExamCountdownBtn').addEventListener('click', saveExamCountdownSettings); $('#settingsExamCheckinBtn').addEventListener('click', checkInExamCountdown);
 $('#saveSectionTimesBtn').addEventListener('click', saveSectionTimes);
-$('#sectionTimeGrid').addEventListener('click', event => { const button = event.target.closest('[data-move-section]'); if (button) moveSectionCard(button); });
-$('#sectionTimeGrid').addEventListener('pointerdown', event => {
-  if (event.pointerType === 'touch' || event.button !== 0 || event.target.closest('input,button,a')) return;
-  const card = event.target.closest('[data-section-card]'); if (card) beginSectionSort(card, event.clientX, event.clientY, 'pointer', event.pointerId);
+$('#pacingGroupSwitch').addEventListener('click', event => { const button = event.target.closest('[data-pacing-group]'); if (button) setPacingGroup(button.dataset.pacingGroup); });
+$('#sectionTimeGrid').addEventListener('click', event => { const button = event.target.closest('[data-pacing-add]'); if (button) addPacingPreset(button.dataset.pacingName); });
+$('#pacingPlanList').addEventListener('click', event => {
+  const remove = event.target.closest('[data-pacing-remove]'); if (remove) { removePacingPreset(remove.dataset.pacingName); return; }
+  const move = event.target.closest('[data-pacing-move]'); if (move) movePacingPreset(move.dataset.pacingName, move.dataset.pacingMove);
 });
-document.addEventListener('pointermove', event => { if (sectionSort.inputType === 'pointer' && event.pointerId === sectionSort.pointerId) moveSectionSort(event.clientX, event.clientY, event); });
-document.addEventListener('pointerup', event => { if (sectionSort.inputType === 'pointer' && event.pointerId === sectionSort.pointerId) finishSectionSort(false); });
-document.addEventListener('pointercancel', event => { if (sectionSort.inputType === 'pointer' && event.pointerId === sectionSort.pointerId) finishSectionSort(true); });
-$('#sectionTimeGrid').addEventListener('touchstart', event => {
-  if (event.touches.length !== 1 || event.target.closest('input,button,a')) return;
-  const card = event.target.closest('[data-section-card]'), touch = event.touches[0]; if (card) beginSectionSort(card, touch.clientX, touch.clientY, 'touch', touch.identifier);
-}, { passive: true });
-document.addEventListener('touchmove', event => {
-  if (sectionSort.inputType !== 'touch') return;
-  const touch = [...event.touches].find(item => item.identifier === sectionSort.touchId); if (touch) moveSectionSort(touch.clientX, touch.clientY, event);
-}, { passive: false });
-document.addEventListener('touchend', event => { if (sectionSort.inputType === 'touch' && [...event.changedTouches].some(item => item.identifier === sectionSort.touchId)) finishSectionSort(false); });
-document.addEventListener('touchcancel', event => { if (sectionSort.inputType === 'touch' && [...event.changedTouches].some(item => item.identifier === sectionSort.touchId)) finishSectionSort(true); });
-document.addEventListener('contextmenu', event => { if (sectionSort.card || event.target.closest('[data-section-card]')) event.preventDefault(); });
-$('#sectionTimeGrid').addEventListener('dragstart', event => event.preventDefault());
+$('#sectionTimeGrid').addEventListener('dragstart', handlePacingDragStart);
+$('#pacingPlanList').addEventListener('dragstart', handlePacingDragStart);
+$('#pacingPlanZone').addEventListener('dragover', handlePacingDragOver);
+$('#pacingPlanZone').addEventListener('drop', handlePacingDrop);
+document.addEventListener('dragend', handlePacingDragEnd);
 $('#exportDataBtn').addEventListener('click', exportData); $('#exportCsvBtn').addEventListener('click', exportRecordsCsv); $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click()); $('#importDataInput').addEventListener('change', e => { importDataFile(e.target.files[0]); e.target.value = ''; });
 $('#cancelRestoreBtn').addEventListener('click', cancelRestoreImport); $('#confirmMergeRestoreBtn').addEventListener('click', () => confirmRestoreImport('merge')); $('#confirmRestoreBtn').addEventListener('click', () => confirmRestoreImport('replace'));
 $('#pipBtn').addEventListener('click',togglePip);

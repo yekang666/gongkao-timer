@@ -1,165 +1,213 @@
 import { APP_EVENTS, emitAppEvent } from './app-events.js';
-import { $, $$, DEFAULT_SECTION_ORDER, PRESETS, XINGCE_MODULE_NAMES, saveSettings, state } from './core.js';
+import { $, $$, DEFAULT_SECTION_ORDER, ESSAY_MODULE_NAMES, PRESETS, XINGCE_MODULE_NAMES, saveSettings, state } from './core.js';
 import { showToast } from './ui.js';
+
+const PACING_GROUPS = { xingce: XINGCE_MODULE_NAMES, essay: ESSAY_MODULE_NAMES };
+const PACING_GROUP_LABELS = { xingce: '行测', essay: '申论' };
+
+function getPacingGroup(group = state.settings.pacingGroup) {
+  return group === 'essay' ? 'essay' : 'xingce';
+}
+
+function normalizePlan(group, plan) {
+  const allowed = PACING_GROUPS[group];
+  const source = Array.isArray(plan) ? plan : allowed;
+  return [...new Set(source.filter(name => allowed.includes(name)))];
+}
+
+function normalizePacingPlans() {
+  const stored = state.settings.pacingPlans;
+  const legacyXingce = Array.isArray(state.settings.sectionOrder) ? state.settings.sectionOrder : null;
+  const plans = {
+    xingce: normalizePlan('xingce', Array.isArray(stored?.xingce) ? stored.xingce : legacyXingce),
+    essay: normalizePlan('essay', stored?.essay)
+  };
+  state.settings.pacingPlans = plans;
+  state.settings.sectionOrder = plans.xingce;
+  state.settings.pacingGroup = getPacingGroup();
+  return plans;
+}
+
+function getPacingPlansSnapshot() {
+  const plans = normalizePacingPlans();
+  return { xingce: [...plans.xingce], essay: [...plans.essay] };
+}
+
+function getOrderedSectionPresets(group = 'xingce') {
+  const plans = normalizePacingPlans();
+  const presetsByName = new Map(PRESETS.section.map(preset => [preset.name, preset]));
+  return plans[getPacingGroup(group)].map(name => presetsByName.get(name)).filter(Boolean);
+}
+
+function getSectionDurations() {
+  const section = state.settings.customDurations?.section || {};
+  return Object.fromEntries(PRESETS.section.map(preset => [
+    preset.name,
+    Number.isFinite(section[preset.name]) && section[preset.name] > 0 ? Math.round(section[preset.name]) : preset.seconds
+  ]));
+}
+
+function getSectionOrderSnapshot() {
+  return getPacingPlansSnapshot().xingce;
+}
+
+function getSectionDurationSnapshot() {
+  const durations = getSectionDurations();
+  $$('[data-section-time]').forEach(input => {
+    const minutes = Math.max(1, Math.floor(Number(input.value) || 0));
+    if (input.dataset.sectionTime) durations[input.dataset.sectionTime] = minutes * 60;
+  });
+  return durations;
+}
+
+function syncVisibleSectionDurations() {
+  const durations = getSectionDurationSnapshot();
+  state.settings.customDurations = { ...(state.settings.customDurations || {}), section: durations };
+  return durations;
+}
+
+function applyCustomDurations() {
+  const plans = normalizePacingPlans();
+  const sectionDurations = getSectionDurations();
+  state.settings.customDurations = { ...(state.settings.customDurations || {}), section: sectionDurations };
+  PRESETS.section.forEach(preset => { preset.seconds = sectionDurations[preset.name]; });
+  state.settings.pacingPlans = plans;
+}
+
+function renderPacingGroupSwitch(group) {
+  $$('[data-pacing-group]').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.pacingGroup === group));
+  });
+}
+
+function renderPacingPlan(group) {
+  const list = $('#pacingPlanList'), empty = $('#pacingPlanEmpty'), plans = getOrderedSectionPresets(group);
+  list.innerHTML = plans.map((preset, index) => `<div class="pacing-plan-card" data-pacing-plan-card data-pacing-name="${preset.name}" draggable="true"><span class="pacing-plan-main"><b>${String(index + 1).padStart(2, '0')}</b><strong>${preset.name}</strong><small>${Math.round(preset.seconds / 60)} 分钟 · 纳入节奏</small></span><span class="pacing-plan-actions"><button type="button" data-pacing-move="-1" data-pacing-name="${preset.name}" aria-label="上移${preset.name}" title="上移"${index === 0 ? ' disabled' : ''}>↑</button><button type="button" data-pacing-move="1" data-pacing-name="${preset.name}" aria-label="下移${preset.name}" title="下移"${index === plans.length - 1 ? ' disabled' : ''}>↓</button><button type="button" data-pacing-remove data-pacing-name="${preset.name}" aria-label="移除${preset.name}" title="移出节奏">×</button></span></div>`).join('');
+  empty.classList.toggle('hidden', plans.length > 0);
+  $('#pacingPlanSummary').textContent = plans.length ? `${plans.length} 个题型 · 按上方顺序提醒` : '暂未加入题型';
+}
+
+function renderSectionCatalog(group) {
+  const grid = $('#sectionTimeGrid'), plans = getPacingPlansSnapshot()[group], durations = getSectionDurations();
+  grid.innerHTML = PACING_GROUPS[group].map(name => {
+    const preset = PRESETS.section.find(item => item.name === name), included = plans.includes(name);
+    return `<div class="section-time-row pacing-catalog-card${included ? ' included' : ''}" data-pacing-catalog-card data-pacing-name="${name}" draggable="true"><label><span>${name}</span><input data-section-time="${name}" type="number" min="1" max="300" step="1" value="${Math.round(durations[name] / 60)}"><em>分钟</em></label><button class="pacing-add-button" data-pacing-add data-pacing-name="${name}" type="button" aria-label="${included ? `移除${name}出节奏` : `加入${name}到节奏`}" title="${included ? '已加入节奏' : '加入节奏'}"${included ? ' disabled' : ''}>${included ? '✓' : '+'}</button></div>`;
+  }).join('');
+}
+
+function renderPacingOrderNote(group) {
+  const note = $('#pacingOrderNote');
+  if (!note) return;
+  const names = getOrderedSectionPresets(group).map(preset => preset.name);
+  note.textContent = names.length ? `${PACING_GROUP_LABELS[group]}节奏：${names.join(' → ')}` : `${PACING_GROUP_LABELS[group]}暂无已加入题型`;
+}
+
+function renderSectionTimeSettings() {
+  const group = getPacingGroup();
+  renderPacingGroupSwitch(group);
+  renderPacingPlan(group);
+  renderSectionCatalog(group);
+  renderPacingOrderNote(group);
+}
+
+function savePacingChanges(message = '') {
+  normalizePacingPlans();
+  state.pacingNotified = [];
+  const saved = saveSettings();
+  renderSectionTimeSettings();
+  emitAppEvent(APP_EVENTS.RENDER_APP);
+  if (message) showToast(saved ? message : `${message}，但未能保存`);
+  return saved;
+}
+
+function setPacingGroup(group) {
+  const nextGroup = getPacingGroup(group);
+  syncVisibleSectionDurations();
+  state.settings.pacingGroup = nextGroup;
+  savePacingChanges();
+}
+
+function addPacingPreset(name, index = null) {
+  const group = getPacingGroup();
+  syncVisibleSectionDurations();
+  const plans = normalizePacingPlans(), allowed = PACING_GROUPS[group];
+  if (!allowed.includes(name) || plans[group].includes(name)) return;
+  const next = [...plans[group]];
+  const insertAt = Number.isInteger(index) ? Math.max(0, Math.min(index, next.length)) : next.length;
+  next.splice(insertAt, 0, name); plans[group] = next; state.settings.pacingPlans = plans;
+  savePacingChanges(`${name}已加入${PACING_GROUP_LABELS[group]}节奏`);
+}
+
+function removePacingPreset(name) {
+  const group = getPacingGroup();
+  syncVisibleSectionDurations();
+  const plans = normalizePacingPlans();
+  plans[group] = plans[group].filter(item => item !== name); state.settings.pacingPlans = plans;
+  savePacingChanges(`${name}已移出${PACING_GROUP_LABELS[group]}节奏`);
+}
+
+function movePacingPreset(name, direction) {
+  const group = getPacingGroup();
+  syncVisibleSectionDurations();
+  const plans = normalizePacingPlans(), index = plans[group].indexOf(name), target = index + Number(direction);
+  if (index < 0 || target < 0 || target >= plans[group].length) return;
+  [plans[group][index], plans[group][target]] = [plans[group][target], plans[group][index]]; state.settings.pacingPlans = plans;
+  savePacingChanges();
+}
+
+function handlePacingDragStart(event) {
+  const card = event.target.closest('[data-pacing-catalog-card],[data-pacing-plan-card]');
+  if (!card || state.status === 'running') return;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/pacing-name', card.dataset.pacingName);
+  event.dataTransfer.setData('text/pacing-source', card.hasAttribute('data-pacing-plan-card') ? 'plan' : 'catalog');
+  card.classList.add('dragging');
+}
+
+function handlePacingDragOver(event) {
+  if (!event.dataTransfer.types.includes('text/pacing-name')) return;
+  event.preventDefault(); event.dataTransfer.dropEffect = 'move';
+  $$('.drop-target').forEach(item => item.classList.remove('drop-target'));
+  event.target.closest('[data-pacing-plan-card]')?.classList.add('drop-target');
+  $('#pacingPlanZone')?.classList.add('drag-active');
+}
+
+function handlePacingDragEnd() {
+  $$('.dragging,.drop-target').forEach(item => item.classList.remove('dragging', 'drop-target'));
+  $('#pacingPlanZone')?.classList.remove('drag-active');
+}
+
+function handlePacingDrop(event) {
+  if (!event.dataTransfer.types.includes('text/pacing-name')) return;
+  event.preventDefault();
+  const name = event.dataTransfer.getData('text/pacing-name'), group = getPacingGroup(), plans = normalizePacingPlans();
+  if (!PACING_GROUPS[group].includes(name)) return handlePacingDragEnd();
+  syncVisibleSectionDurations();
+  const targetCard = event.target.closest('[data-pacing-plan-card]'), targetName = targetCard?.dataset.pacingName;
+  let next = plans[group].filter(item => item !== name), insertAt = next.length;
+  if (targetName && targetName !== name) {
+    insertAt = next.indexOf(targetName);
+  }
+  next.splice(Math.max(0, insertAt), 0, name); plans[group] = next; state.settings.pacingPlans = plans;
+  handlePacingDragEnd(); savePacingChanges();
+}
+
+function saveSectionTimes() {
+  syncVisibleSectionDurations();
+  savePacingChanges('专项时间已保存');
+}
 
 function normalizeSectionOrder(order) {
   const requested = Array.isArray(order) ? order.filter((name, index) => DEFAULT_SECTION_ORDER.includes(name) && order.indexOf(name) === index) : [];
   return [...requested, ...DEFAULT_SECTION_ORDER.filter(name => !requested.includes(name))];
 }
+
 function applySectionOrder(order = state.settings.sectionOrder) {
-  state.settings.sectionOrder = normalizeSectionOrder(order);
-}
-function getOrderedSectionPresets() {
-  const presetsByName = new Map(PRESETS.section.map(preset => [preset.name, preset]));
-  return normalizeSectionOrder(state.settings.sectionOrder).map(name => presetsByName.get(name)).filter(Boolean);
-}
-function getSectionDurations() {
-  const section = state.settings.customDurations?.section || {};
-  return Object.fromEntries(PRESETS.section.filter(preset => XINGCE_MODULE_NAMES.includes(preset.name)).map(preset => [preset.name, Number.isFinite(section[preset.name]) && section[preset.name] > 0 ? Math.round(section[preset.name]) : preset.seconds]));
-}
-function getSectionOrderSnapshot() {
-  const visibleOrder = typeof getSectionCardOrder === 'function' ? getSectionCardOrder() : [];
-  return normalizeSectionOrder(visibleOrder.length ? visibleOrder : state.settings.sectionOrder);
-}
-function getSectionDurationSnapshot() {
-  const visibleDurations = {};
-  $$('[data-section-time]').forEach(input => {
-    const minutes = Math.max(1, Math.floor(Number(input.value) || 0));
-    if (input.dataset.sectionTime) visibleDurations[input.dataset.sectionTime] = minutes * 60;
-  });
-  const presets = PRESETS.section.filter(preset => XINGCE_MODULE_NAMES.includes(preset.name));
-  const source = Object.keys(visibleDurations).length ? visibleDurations : Object.fromEntries(presets.map(preset => [preset.name, preset.seconds]));
-  return Object.fromEntries(presets.map(preset => {
-    const seconds = Number(source[preset.name]);
-    return [preset.name, Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : preset.seconds];
-  }));
-}
-function applyCustomDurations() {
-  applySectionOrder();
-  const sectionDurations = getSectionDurations();
-  state.settings.customDurations = { ...(state.settings.customDurations || {}), section: sectionDurations };
-  PRESETS.section.filter(preset => XINGCE_MODULE_NAMES.includes(preset.name)).forEach(preset => { preset.seconds = sectionDurations[preset.name]; });
-}
-function renderSectionTimeSettings() {
-  const grid = $('#sectionTimeGrid'); if (!grid) return;
-  const presets = getOrderedSectionPresets().filter(preset => XINGCE_MODULE_NAMES.includes(preset.name));
-  grid.innerHTML = presets.map((preset, index) => `<div class="section-time-row" data-section-card data-section-name="${preset.name}" title="长按后拖动可调整模考顺序"><span class="section-drag-handle" aria-hidden="true">⠿</span><label><span>${preset.name}</span><input data-section-time="${preset.name}" type="number" min="1" max="300" step="1" value="${Math.round(preset.seconds / 60)}"><em>分钟</em></label><span class="section-order-actions"><button data-move-section="-1" type="button" aria-label="上移${preset.name}" title="上移"${index === 0 ? ' disabled' : ''}>↑</button><button data-move-section="1" type="button" aria-label="下移${preset.name}" title="下移"${index === presets.length - 1 ? ' disabled' : ''}>↓</button></span></div>`).join('');
-  renderPacingOrderNote();
+  const normalized = normalizeSectionOrder(order);
+  state.settings.sectionOrder = normalized;
+  const plans = normalizePacingPlans();
+  plans.xingce = normalized;
+  state.settings.pacingPlans = plans;
 }
 
-function syncSectionMoveButtons() {
-  const cards = $$('#sectionTimeGrid [data-section-card]');
-  cards.forEach((card, index) => {
-    const up = card.querySelector('[data-move-section="-1"]'), down = card.querySelector('[data-move-section="1"]');
-    if (up) up.disabled = index === 0;
-    if (down) down.disabled = index === cards.length - 1;
-  });
-}
-
-function moveSectionCard(button) {
-  const card = button.closest('[data-section-card]'), direction = Number(button.dataset.moveSection), grid = $('#sectionTimeGrid');
-  const target = direction < 0 ? card?.previousElementSibling : card?.nextElementSibling;
-  if (!card || !target) return;
-  animateSectionGridReflow(() => direction < 0 ? grid.insertBefore(card, target) : grid.insertBefore(target, card));
-  state.settings.sectionOrder = normalizeSectionOrder(getSectionCardOrder()); state.pacingNotified = []; const saved = saveSettings();
-  syncSectionMoveButtons(); emitAppEvent(APP_EVENTS.RENDER_PRESETS); renderPacingOrderNote(saved ? '答题顺序已调整并保存' : '答题顺序已调整，但未能保存'); button.focus();
-}
-function renderPacingOrderNote(message = '') {
-  const note = $('#pacingOrderNote'); if (!note) return;
-  note.textContent = message || `行测顺序：${getOrderedSectionPresets().map(preset => preset.name).join(' → ')}`;
-}
-function saveSectionTimes() {
-  const section = {};
-  $$('[data-section-time]').forEach(input => { const minutes = Math.max(1, Math.floor(Number(input.value) || 0)); section[input.dataset.sectionTime] = minutes * 60; input.value = minutes; });
-  state.settings.customDurations = { ...(state.settings.customDurations || {}), section };
-  applyCustomDurations(); state.pacingNotified = []; const saved = saveSettings();
-  if (state.mode === 'section') { const current = PRESETS.section.find(p => p.name === state.preset.name) || PRESETS.section[0]; state.preset = current; state.duration = current.seconds; emitAppEvent(APP_EVENTS.RENDER_APP, { resetTimer: true }); }
-  renderSectionTimeSettings(); emitAppEvent(APP_EVENTS.RENDER_PRESETS); emitAppEvent(APP_EVENTS.RENDER_APP); if (saved) showToast('专项时间已保存');
-}
-
-const sectionSort = { card: null, placeholder: null, timer: null, frame: null, active: false, inputType: null, pointerId: null, touchId: null, startX: 0, startY: 0, lastX: 0, lastY: 0, offsetX: 0, offsetY: 0, originalOrder: [] };
-
-function getSectionCardOrder() { return $$('#sectionTimeGrid [data-section-name]').map(card => card.dataset.sectionName); }
-function reorderSectionCards(order) {
-  const grid = $('#sectionTimeGrid'), cards = new Map($$('#sectionTimeGrid [data-section-card]').map(card => [card.dataset.sectionName, card]));
-  order.forEach(name => { if (cards.has(name)) grid.appendChild(cards.get(name)); });
-}
-function clearSectionFloatingStyles(card) {
-  if (!card) return;
-  ['position', 'left', 'top', 'width', 'height', 'margin', 'transform'].forEach(property => card.style.removeProperty(property));
-}
-function resetSectionSortState() {
-  clearTimeout(sectionSort.timer); if (sectionSort.frame) cancelAnimationFrame(sectionSort.frame);
-  if (sectionSort.placeholder?.isConnected && sectionSort.card) { sectionSort.placeholder.parentNode.insertBefore(sectionSort.card, sectionSort.placeholder); sectionSort.placeholder.remove(); }
-  sectionSort.card?.classList.remove('holding', 'dragging'); clearSectionFloatingStyles(sectionSort.card); $('#sectionTimeGrid').classList.remove('sorting');
-  document.body.classList.remove('section-reordering');
-  Object.assign(sectionSort, { card: null, placeholder: null, timer: null, frame: null, active: false, inputType: null, pointerId: null, touchId: null, startX: 0, startY: 0, lastX: 0, lastY: 0, offsetX: 0, offsetY: 0, originalOrder: [] });
-}
-function positionFloatingSectionCard(x, y) {
-  sectionSort.lastX = x; sectionSort.lastY = y;
-  if (sectionSort.frame) return;
-  sectionSort.frame = requestAnimationFrame(() => {
-    sectionSort.frame = null; if (!sectionSort.active || !sectionSort.card) return;
-    const left = sectionSort.lastX - sectionSort.offsetX, top = sectionSort.lastY - sectionSort.offsetY;
-    sectionSort.card.style.transform = `translate3d(${left}px,${top}px,0) scale(1.025)`;
-  });
-}
-function animateSectionGridReflow(change) {
-  const cards = $$('#sectionTimeGrid [data-section-card]'), before = new Map(cards.map(card => [card, card.getBoundingClientRect()]));
-  change();
-  cards.forEach(card => {
-    const previous = before.get(card), current = card.getBoundingClientRect(), x = previous.left - current.left, y = previous.top - current.top;
-    if (Math.abs(x) < 1 && Math.abs(y) < 1) return;
-    card.animate([{ transform: `translate3d(${x}px,${y}px,0)` }, { transform: 'translate3d(0,0,0)' }], { duration: 180, easing: 'cubic-bezier(.2,.8,.2,1)' });
-  });
-}
-function activateSectionSort() {
-  if (!sectionSort.card) return;
-  const card = sectionSort.card, grid = $('#sectionTimeGrid'), rect = card.getBoundingClientRect();
-  sectionSort.active = true; sectionSort.originalOrder = getSectionCardOrder(); sectionSort.offsetX = sectionSort.lastX - rect.left; sectionSort.offsetY = sectionSort.lastY - rect.top;
-  const placeholder = document.createElement('div'); placeholder.className = 'section-sort-placeholder'; placeholder.dataset.sectionName = card.dataset.sectionName; placeholder.style.height = `${rect.height}px`; sectionSort.placeholder = placeholder;
-  grid.insertBefore(placeholder, card); document.body.appendChild(card);
-  Object.assign(card.style, { position: 'fixed', left: '0px', top: '0px', width: `${rect.width}px`, height: `${rect.height}px`, margin: '0px', transform: `translate3d(${rect.left}px,${rect.top}px,0) scale(1.025)` });
-  sectionSort.card.classList.remove('holding'); sectionSort.card.classList.add('dragging');
-  grid.classList.add('sorting'); document.body.classList.add('section-reordering');
-  if (sectionSort.inputType === 'pointer' && sectionSort.pointerId !== null) { try { sectionSort.card.setPointerCapture(sectionSort.pointerId); } catch {} }
-  if (navigator.vibrate) navigator.vibrate(30);
-  renderPacingOrderNote('正在调整：拖到目标位置后松开');
-}
-function beginSectionSort(card, x, y, inputType, id) {
-  resetSectionSortState();
-  Object.assign(sectionSort, { card, inputType, startX: x, startY: y, lastX: x, lastY: y, pointerId: inputType === 'pointer' ? id : null, touchId: inputType === 'touch' ? id : null });
-  if (inputType === 'pointer') { try { card.setPointerCapture(id); } catch {} }
-  card.classList.add('holding'); sectionSort.timer = setTimeout(activateSectionSort, 460);
-}
-function moveSectionSort(x, y, event) {
-  if (!sectionSort.card) return;
-  if (!sectionSort.active) {
-    sectionSort.lastX = x; sectionSort.lastY = y;
-    if (Math.hypot(x - sectionSort.startX, y - sectionSort.startY) > 10) resetSectionSortState();
-    return;
-  }
-  if (event.cancelable) event.preventDefault(); positionFloatingSectionCard(x, y);
-  const target = document.elementFromPoint(x, y)?.closest('[data-section-card]');
-  if (!target || !$('#sectionTimeGrid').contains(target)) return;
-  const grid = $('#sectionTimeGrid'), children = [...grid.children], from = children.indexOf(sectionSort.placeholder), to = children.indexOf(target);
-  if (from < 0 || to < 0 || Math.abs(from - to) < 1) return;
-  animateSectionGridReflow(() => grid.insertBefore(sectionSort.placeholder, to > from ? target.nextSibling : target));
-}
-function finishSectionSort(cancelled = false) {
-  if (!sectionSort.card) return;
-  const wasActive = sectionSort.active, originalOrder = [...sectionSort.originalOrder];
-  if (!wasActive) { resetSectionSortState(); renderPacingOrderNote(); return; }
-  const card = sectionSort.card, placeholder = sectionSort.placeholder, floatingRect = card.getBoundingClientRect();
-  placeholder.parentNode.insertBefore(card, placeholder); placeholder.remove(); sectionSort.placeholder = null; clearSectionFloatingStyles(card); card.classList.remove('dragging');
-  if (cancelled) reorderSectionCards(originalOrder);
-  const settledRect = card.getBoundingClientRect(), x = floatingRect.left - settledRect.left, y = floatingRect.top - settledRect.top;
-  card.animate([{ transform: `translate3d(${x}px,${y}px,0) scale(1.025)`, opacity: .94 }, { transform: 'translate3d(0,0,0) scale(1)', opacity: 1 }], { duration: 200, easing: 'cubic-bezier(.2,.85,.2,1)' });
-  const order = cancelled ? null : getSectionCardOrder();
-  resetSectionSortState();
-  if (!order) { renderPacingOrderNote(); return; }
-  state.settings.sectionOrder = normalizeSectionOrder(order); applySectionOrder(); state.pacingNotified = []; const saved = saveSettings();
-  emitAppEvent(APP_EVENTS.RENDER_PRESETS); emitAppEvent(APP_EVENTS.RENDER_APP); renderPacingOrderNote(); if (saved) showToast('模考节奏顺序已保存');
-}
-
-export { applyCustomDurations, beginSectionSort, getSectionDurations, finishSectionSort, getOrderedSectionPresets, getSectionDurationSnapshot, getSectionOrderSnapshot, moveSectionCard, moveSectionSort, normalizeSectionOrder, renderSectionTimeSettings, saveSectionTimes, sectionSort };
+export { addPacingPreset, applyCustomDurations, applySectionOrder, getOrderedSectionPresets, getPacingPlansSnapshot, getSectionDurations, getSectionDurationSnapshot, getSectionOrderSnapshot, handlePacingDragEnd, handlePacingDragOver, handlePacingDragStart, handlePacingDrop, movePacingPreset, normalizeSectionOrder, removePacingPreset, renderSectionTimeSettings, saveSectionTimes, setPacingGroup };

@@ -45,6 +45,7 @@ function renderPacingStatus() {
   const status = $('#pacingStatus');
   if (!isMockPacingActive()) { status.classList.add('hidden'); return; }
   const plan = getMockPacingPlan();
+  if (!plan.length) { status.classList.add('hidden'); return; }
   const next = plan.find(checkpoint => state.elapsed < checkpoint.at);
   status.classList.remove('hidden');
   if (next) {

@@ -1,5 +1,5 @@
 import { normalizeFocusSoundSettings } from './audio.js';
-import { $, PRESETS, STORAGE_RECORDS, STORAGE_SETTINGS, XINGCE_MODULE_NAMES, escapeHTML, normalizeRecords, saveRecords, state } from './core.js';
+import { $, PRESETS, STORAGE_RECORDS, STORAGE_SETTINGS, escapeHTML, normalizeRecords, saveRecords, state } from './core.js';
 import { normalizeExamCountdown } from './exam.js';
 import { markBackupDone, syncBackupReminderUi } from './backup-reminder.js';
 import { render } from './render.js';
@@ -22,7 +22,7 @@ function normalizeImportedData(data) {
   const importedRecords = Array.isArray(data.records) ? data.records : [];
   const section = importedSettings.customDurations?.section || importedConfiguration.sectionDurations || data.sectionDurations || {};
   const customDurations = { ...(importedSettings.customDurations || {}), section: {} };
-  PRESETS.section.filter(preset => XINGCE_MODULE_NAMES.includes(preset.name)).forEach(preset => {
+  PRESETS.section.forEach(preset => {
     const seconds = Number(section[preset.name]);
     customDurations.section[preset.name] = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : preset.seconds;
   });

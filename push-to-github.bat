@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.28.1"
-set "COMMIT_MESSAGE=v2.28.1: group section modes and keep pacing settings focused"
+set "VERSION=v2.29.0"
+set "COMMIT_MESSAGE=v2.29.0: add configurable mock pacing plans"
 
 echo === Prepare %VERSION% for GitHub ===
 

@@ -67,7 +67,8 @@ function getSampleGrade(questions) {
 // 核心模型：预计得分 = Σ 模块题量 ×（答完部分 × 个人正确率 + 未答完部分 × 蒙对率）× 每题参考分值
 export function buildPrediction(records, plan, now = Date.now()) {
   const durations = getSectionDurations();
-  const moduleNames = getOrderedSectionPresets().map(preset => preset.name).filter(name => XINGCE_MODULE_NAMES.includes(name));
+  const configuredNames = getOrderedSectionPresets('xingce').map(preset => preset.name);
+  const moduleNames = [...configuredNames, ...XINGCE_MODULE_NAMES.filter(name => !configuredNames.includes(name))];
   const totalSectionSeconds = moduleNames.reduce((sum, name) => sum + durations[name], 0);
   const pooled = { correctWeight: 0, questionWeight: 0 };
   const stats = Object.fromEntries(moduleNames.map(name => {
@@ -202,7 +203,7 @@ export function renderPrediction(now = new Date()) {
   let records = [];
   for (const window of PREDICT_WINDOWS) {
     records = getPeriodRecords(window.days, 0, now);
-    const sampleQuestions = getOrderedSectionPresets().reduce((sum, preset) => sum + collectModuleSamples(records, preset.name, now.getTime()).sampleQuestions, 0);
+    const sampleQuestions = XINGCE_MODULE_NAMES.reduce((sum, name) => sum + collectModuleSamples(records, name, now.getTime()).sampleQuestions, 0);
     if (sampleQuestions >= PREDICT_MIN_SAMPLE) { windowUsed = window; break; }
     windowUsed = window;
   }

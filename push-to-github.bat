@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.29.0"
-set "COMMIT_MESSAGE=v2.29.0: add configurable mock pacing plans"
+set "VERSION=v2.29.1"
+set "COMMIT_MESSAGE=v2.29.1: fix pacing card dragging"
 
 echo === Prepare %VERSION% for GitHub ===
 

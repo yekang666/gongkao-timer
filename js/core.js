@@ -24,7 +24,7 @@ function $$(selector) { return [...document.querySelectorAll(selector)]; }
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
 const STORAGE_SESSION = 'examTimer.activeSession.v1';
-const APP_VERSION = 'v2.28.0';
+const APP_VERSION = 'v2.28.1';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const XINGCE_MODULE_NAMES = XINGCE_SECTION_PRESETS.map(({ name }) => name);
 const ESSAY_MODULE_NAMES = ESSAY_SECTION_PRESETS.map(({ name }) => name);
@@ -37,7 +37,7 @@ const TRAINING_DIFFICULTIES = ['简单', '正常', '较难'];
 const SPEED_SCORE_TYPES = new Set(PRESETS.mock.map(preset => preset.name));
 const LAP_REVIEW_STATUSES = ['correct', 'wrong', 'skipped'];
 const LAP_ERROR_REASONS = ['知识盲区', '理解偏差', '计算失误', '方法不优', '时间不足', '审题不清', '选项纠结', '陷阱失误', '蒙错'];
-const DEFAULT_SECTION_ORDER = PRESETS.section.map(preset => preset.name);
+const DEFAULT_SECTION_ORDER = XINGCE_MODULE_NAMES;
 const ANALYTICS_COLORS = ['#2e6754', '#c46a20', '#54799a', '#8a6c9b', '#b83b35', '#638467', '#a46d4c', '#467b86', '#7b7791'];
 const FOCUS_SOUND_TYPES = {
   white: { label: '白噪音', hint: '均匀沙沙声，适合屏蔽细碎干扰' },
@@ -49,7 +49,7 @@ const FOCUS_SOUND_TYPES = {
 };
 
 const state = {
-  mode: 'mock', preset: PRESETS.mock[0], duration: PRESETS.mock[0].seconds,
+  mode: 'mock', sectionGroup: 'xingce', preset: PRESETS.mock[0], duration: PRESETS.mock[0].seconds,
   remaining: PRESETS.mock[0].seconds, elapsed: 0, status: 'idle',
   startedAt: null, tickBase: null, interval: null, autoFinished: false,
   laps: [], lastLapElapsed: 0, pacingNotified: [], pendingImport: null,
@@ -237,7 +237,7 @@ function restoreActiveSession() {
   const elapsed = Number(snapshot.elapsed), duration = Number(snapshot.duration), remaining = Number(snapshot.remaining);
   if (!preset || !Number.isFinite(elapsed) || elapsed < .5 || !Number.isFinite(duration) || duration < 0) { clearActiveSession(); return false; }
   const inactiveSeconds = snapshot.status === 'running' ? Math.min(age / 1000, 6 * 60 * 60) : 0;
-  state.mode = snapshot.mode; state.preset = preset; state.duration = duration;
+  state.mode = snapshot.mode; state.preset = preset; state.sectionGroup = snapshot.mode === 'section' && ESSAY_MODULE_NAMES.includes(preset.name) ? 'essay' : 'xingce'; state.duration = duration;
   state.elapsed = elapsed + inactiveSeconds;
   state.remaining = snapshot.mode === 'single' ? 0 : Math.max(0, (Number.isFinite(remaining) ? remaining : duration - elapsed) - inactiveSeconds);
   state.startedAt = normalizeTimestamp(snapshot.startedAt) || new Date(Date.now() - state.elapsed * 1000).toISOString();

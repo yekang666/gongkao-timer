@@ -135,12 +135,15 @@ try {
   await screenshot('stats-baseline-mobile.png');
 
   await evaluate(`document.querySelector('[data-mode="section"]').click();`);
-  const sectionPresets = await evaluate(`({ count:document.querySelectorAll('#presetList .preset-button').length, names:[...document.querySelectorAll('#presetList .preset-button strong')].map(item => item.textContent) })`);
-  assert(sectionPresets.count === 10 && ['\u7533\u8bba\u6982\u62ec\u9898', '\u5206\u6790\u7406\u89e3\u9898', '\u63d0\u51fa\u5bf9\u7b56\u9898', '\u516c\u6587\u9898'].every(name => sectionPresets.names.includes(name)), 'Essay section presets are missing');
+  const xingcePresets = await evaluate(`({ count:document.querySelectorAll('#presetList .preset-button').length, groups:document.querySelectorAll('#sectionGroupSwitch [data-section-group]').length, selected:document.querySelector('#sectionGroupSwitch [aria-pressed="true"]').dataset.sectionGroup, fits:document.querySelector('#presetArea').scrollWidth <= document.querySelector('#presetArea').clientWidth, names:[...document.querySelectorAll('#presetList .preset-button strong')].map(item => item.textContent) })`);
+  assert(xingcePresets.count === 6 && xingcePresets.groups === 2 && xingcePresets.selected === 'xingce' && xingcePresets.fits && xingcePresets.names.includes('\u8d44\u6599\u5206\u6790'), 'Xingce section group is incorrect');
+  await evaluate(`document.querySelector('[data-section-group="essay"]').click();`);
+  const essayPresets = await evaluate(`({ count:document.querySelectorAll('#presetList .preset-button').length, selected:document.querySelector('#sectionGroupSwitch [aria-pressed="true"]').dataset.sectionGroup, fits:document.querySelector('#presetArea').scrollWidth <= document.querySelector('#presetArea').clientWidth, names:[...document.querySelectorAll('#presetList .preset-button strong')].map(item => item.textContent) })`);
+  assert(essayPresets.count === 4 && essayPresets.selected === 'essay' && essayPresets.fits && ['\u7533\u8bba\u6982\u62ec\u9898', '\u5206\u6790\u7406\u89e3\u9898', '\u63d0\u51fa\u5bf9\u7b56\u9898', '\u516c\u6587\u9898'].every(name => essayPresets.names.includes(name)), 'Essay section group is incorrect');
   await screenshot('essay-sections-mobile.png');
   await evaluate(`document.querySelector('#settingsBtn').click(); document.querySelector('[data-settings-view="pacing"]').click();`);
   const pacingSettings = await evaluate(`({ count:document.querySelectorAll('#sectionTimeGrid [data-section-time]').length, names:[...document.querySelectorAll('#sectionTimeGrid [data-section-time]')].map(item => item.dataset.sectionTime) })`);
-  assert(pacingSettings.count === 10 && ['\u7533\u8bba\u6982\u62ec\u9898', '\u5206\u6790\u7406\u89e3\u9898', '\u63d0\u51fa\u5bf9\u7b56\u9898', '\u516c\u6587\u9898'].every(name => pacingSettings.names.includes(name)), 'Essay pacing settings are missing');
+  assert(pacingSettings.count === 6 && !pacingSettings.names.includes('\u7533\u8bba\u6982\u62ec\u9898') && pacingSettings.names.includes('\u8d44\u6599\u5206\u6790'), 'Essay modules should not appear in pacing settings');
   await screenshot('essay-pacing-mobile.png');
   await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await sleep(100);
@@ -152,7 +155,7 @@ try {
   assert(essayPacing.visible && essayPacing.text.includes('\u7533\u8bba\u6982\u62ec\u9898'), 'Essay mock pacing did not start with the summary module');
 
   assert(!exceptions.length, `Browser exceptions: ${exceptions.join('; ')}`);
-  console.log(`OK: trend daily=${trend.bars}, monthly=${groupedTrend.bars}, baseline=${baseline.cards} cards, module history=${moduleHistory.rows} rows, essay presets=${sectionPresets.count}, essay pacing=${pacingSettings.count}`);
+  console.log(`OK: trend daily=${trend.bars}, monthly=${groupedTrend.bars}, baseline=${baseline.cards} cards, module history=${moduleHistory.rows} rows, xingce presets=${xingcePresets.count}, essay presets=${essayPresets.count}, pacing settings=${pacingSettings.count}`);
   console.log(`Screenshots: ${path.join(SCREENSHOT_DIR, 'essay-sections-desktop.png')}, ${path.join(SCREENSHOT_DIR, 'essay-sections-mobile.png')}, ${path.join(SCREENSHOT_DIR, 'essay-pacing-desktop.png')}, ${path.join(SCREENSHOT_DIR, 'essay-pacing-mobile.png')}`);
 } finally {
   socket?.close();

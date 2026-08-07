@@ -343,6 +343,11 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .timer-hint { min-height: 20px; margin: 0 0 34px; color: var(--muted); font-size: 13px; }
 
 .preset-area { min-height: 42px; }
+.section-group-switch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(260px, 100%); gap: 3px; margin: 0 auto 10px; padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
+.section-group-switch button { min-height: 34px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 650; }
+.section-group-switch button:hover:not(:disabled) { color: var(--accent); }
+.section-group-switch button[aria-pressed="true"] { border-color: var(--accent); background: var(--surface); color: var(--accent); box-shadow: 0 2px 7px rgba(32,45,38,.09); }
+.section-group-switch button:disabled { cursor: default; opacity: .64; }
 .preset-list { gap: 0; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
 .preset-button {
   min-height: 40px;

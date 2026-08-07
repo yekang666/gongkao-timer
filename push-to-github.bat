@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.28.0"
-set "COMMIT_MESSAGE=v2.28.0: add essay sections and pacing"
+set "VERSION=v2.28.1"
+set "COMMIT_MESSAGE=v2.28.1: group section modes and keep pacing settings focused"
 
 echo === Prepare %VERSION% for GitHub ===
 

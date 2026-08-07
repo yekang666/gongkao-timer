@@ -1,5 +1,5 @@
 import { APP_EVENTS, emitAppEvent } from './app-events.js';
-import { $, $$, DEFAULT_SECTION_ORDER, MOCK_PACING_MODULES, PRESETS, saveSettings, state } from './core.js';
+import { $, $$, DEFAULT_SECTION_ORDER, PRESETS, XINGCE_MODULE_NAMES, saveSettings, state } from './core.js';
 import { showToast } from './ui.js';
 
 function normalizeSectionOrder(order) {
@@ -15,7 +15,7 @@ function getOrderedSectionPresets() {
 }
 function getSectionDurations() {
   const section = state.settings.customDurations?.section || {};
-  return Object.fromEntries(PRESETS.section.map(preset => [preset.name, Number.isFinite(section[preset.name]) && section[preset.name] > 0 ? Math.round(section[preset.name]) : preset.seconds]));
+  return Object.fromEntries(PRESETS.section.filter(preset => XINGCE_MODULE_NAMES.includes(preset.name)).map(preset => [preset.name, Number.isFinite(section[preset.name]) && section[preset.name] > 0 ? Math.round(section[preset.name]) : preset.seconds]));
 }
 function getSectionOrderSnapshot() {
   const visibleOrder = typeof getSectionCardOrder === 'function' ? getSectionCardOrder() : [];
@@ -27,8 +27,9 @@ function getSectionDurationSnapshot() {
     const minutes = Math.max(1, Math.floor(Number(input.value) || 0));
     if (input.dataset.sectionTime) visibleDurations[input.dataset.sectionTime] = minutes * 60;
   });
-  const source = Object.keys(visibleDurations).length ? visibleDurations : Object.fromEntries(PRESETS.section.map(preset => [preset.name, preset.seconds]));
-  return Object.fromEntries(PRESETS.section.map(preset => {
+  const presets = PRESETS.section.filter(preset => XINGCE_MODULE_NAMES.includes(preset.name));
+  const source = Object.keys(visibleDurations).length ? visibleDurations : Object.fromEntries(presets.map(preset => [preset.name, preset.seconds]));
+  return Object.fromEntries(presets.map(preset => {
     const seconds = Number(source[preset.name]);
     return [preset.name, Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : preset.seconds];
   }));
@@ -37,11 +38,11 @@ function applyCustomDurations() {
   applySectionOrder();
   const sectionDurations = getSectionDurations();
   state.settings.customDurations = { ...(state.settings.customDurations || {}), section: sectionDurations };
-  PRESETS.section.forEach(preset => { preset.seconds = sectionDurations[preset.name]; });
+  PRESETS.section.filter(preset => XINGCE_MODULE_NAMES.includes(preset.name)).forEach(preset => { preset.seconds = sectionDurations[preset.name]; });
 }
 function renderSectionTimeSettings() {
   const grid = $('#sectionTimeGrid'); if (!grid) return;
-  const presets = getOrderedSectionPresets();
+  const presets = getOrderedSectionPresets().filter(preset => XINGCE_MODULE_NAMES.includes(preset.name));
   grid.innerHTML = presets.map((preset, index) => `<div class="section-time-row" data-section-card data-section-name="${preset.name}" title="长按后拖动可调整模考顺序"><span class="section-drag-handle" aria-hidden="true">⠿</span><label><span>${preset.name}</span><input data-section-time="${preset.name}" type="number" min="1" max="300" step="1" value="${Math.round(preset.seconds / 60)}"><em>分钟</em></label><span class="section-order-actions"><button data-move-section="-1" type="button" aria-label="上移${preset.name}" title="上移"${index === 0 ? ' disabled' : ''}>↑</button><button data-move-section="1" type="button" aria-label="下移${preset.name}" title="下移"${index === presets.length - 1 ? ' disabled' : ''}>↓</button></span></div>`).join('');
   renderPacingOrderNote();
 }
@@ -65,9 +66,7 @@ function moveSectionCard(button) {
 }
 function renderPacingOrderNote(message = '') {
   const note = $('#pacingOrderNote'); if (!note) return;
-  const orderedNames = getOrderedSectionPresets().map(preset => preset.name);
-  const formatOrder = mockName => orderedNames.filter(name => MOCK_PACING_MODULES[mockName].includes(name)).join(' → ');
-  note.textContent = message || `行测：${formatOrder('行测模考')}；申论：${formatOrder('申论国考')}`;
+  note.textContent = message || `行测顺序：${getOrderedSectionPresets().map(preset => preset.name).join(' → ')}`;
 }
 function saveSectionTimes() {
   const section = {};

@@ -20,7 +20,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><img src="assets/app-icon.png" alt=""></span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.28.0</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.28.1</span></div><small>训练工作台</small></div>
       </div>
       <div class="exam-countdown" id="examCountdown">
         <button class="exam-countdown-main" id="examCountdownOpenBtn" type="button" title="设置考试倒计时">
@@ -67,6 +67,10 @@
         <p class="timer-hint" id="timerHint">建议按正式考试节奏完成，计时结束将自动记录</p>
 
         <div class="preset-area" id="presetArea">
+          <div class="section-group-switch hidden" id="sectionGroupSwitch" aria-label="专项类别">
+            <button data-section-group="xingce" type="button" aria-pressed="true">行测</button>
+            <button data-section-group="essay" type="button" aria-pressed="false">申论</button>
+          </div>
           <div class="preset-list" id="presetList"></div>
         </div>
 
@@ -138,7 +142,7 @@
       </section>
       <section class="settings-panel hidden" data-settings-panel="pacing">
         <label class="setting-row"><span><strong>模考节奏提醒</strong><small>根据专项时间配置和逐题打点判断是否落后</small></span><input id="pacingToggle" type="checkbox" checked></label>
-        <div class="setting-block section-time-settings"><span><strong>专项时间与模考节奏</strong><small>行测与申论专项时间会按题型分别映射到对应模考；长按卡片后拖动可调整同类题型的答题顺序</small></span><div class="section-time-grid" id="sectionTimeGrid" aria-label="专项时间和模考顺序"></div><p class="pacing-order-note" id="pacingOrderNote" aria-live="polite"></p><button class="primary" id="saveSectionTimesBtn" type="button">保存专项时间</button></div>
+        <div class="setting-block section-time-settings"><span><strong>行测专项时间与模考节奏</strong><small>时间按比例映射到行测模考；长按卡片后拖动可调整答题顺序</small></span><div class="section-time-grid" id="sectionTimeGrid" aria-label="行测专项时间和模考顺序"></div><p class="pacing-order-note" id="pacingOrderNote" aria-live="polite"></p><button class="primary" id="saveSectionTimesBtn" type="button">保存行测专项时间</button></div>
       </section>
       <section class="settings-panel hidden" data-settings-panel="shortcuts">
         <label class="setting-row"><span><strong>全局快捷键</strong><small>当前页面打开时生效；输入内容或弹窗操作时会自动暂停响应。</small></span><input id="shortcutsToggle" type="checkbox" checked></label>

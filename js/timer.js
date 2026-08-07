@@ -1,6 +1,6 @@
 import { playBeep, showTimeUpNotice, stopAlertKeepAlive } from './audio.js';
 import { APP_EVENTS, emitAppEvent } from './app-events.js';
-import { $, $$, PRESETS, SECTION_QUESTION_COUNTS, clearActiveSession, persistActiveSession, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
+import { $, $$, ESSAY_MODULE_NAMES, PRESETS, SECTION_QUESTION_COUNTS, XINGCE_MODULE_NAMES, clearActiveSession, persistActiveSession, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
 import { formatClock, formatDuration } from './format.js';
 import { getMockPacingPlan, isMockPacingActive } from './pacing.js';
 import { syncMobilePipSource, syncNativeVideoTime, updatePip } from './pip.js';
@@ -8,10 +8,18 @@ import { render } from './render.js';
 import { appConfirm, resetFinishDialog, showToast, stopInterval } from './ui.js';
 
 function renderPresets() {
-  const list = $('#presetList'); list.innerHTML = '';
+  const list = $('#presetList'), groupSwitch = $('#sectionGroupSwitch'); list.innerHTML = '';
   if (state.mode === 'single') { $('#presetArea').classList.add('hidden'); return; }
   $('#presetArea').classList.remove('hidden');
-  PRESETS[state.mode].forEach(preset => {
+  groupSwitch.classList.toggle('hidden', state.mode !== 'section');
+  let presets = PRESETS[state.mode];
+  if (state.mode === 'section') {
+    state.sectionGroup = ESSAY_MODULE_NAMES.includes(state.preset.name) ? 'essay' : (state.sectionGroup === 'essay' ? 'essay' : 'xingce');
+    const visibleNames = state.sectionGroup === 'essay' ? ESSAY_MODULE_NAMES : XINGCE_MODULE_NAMES;
+    presets = PRESETS.section.filter(preset => visibleNames.includes(preset.name));
+    $$('[data-section-group]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.sectionGroup === state.sectionGroup)));
+  }
+  presets.forEach(preset => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'preset-button';
     if (state.preset.name === preset.name) button.classList.add('active');
     button.innerHTML = `<strong>${preset.name}</strong><span>${preset.seconds / 60} 分钟</span>`;
@@ -20,16 +28,28 @@ function renderPresets() {
 }
 
 function selectPreset(preset) {
-  if (state.status === 'running') return;
-  if (state.preset === preset) return;
-  if (state.elapsed >= 1 && !appConfirm('切换题型会清空当前未保存的计时和打点，确定继续吗？')) return;
+  if (state.status === 'running') return false;
+  if (state.preset === preset) return true;
+  if (state.elapsed >= 1 && !appConfirm('切换题型会清空当前未保存的计时和打点，确定继续吗？')) return false;
+  if (state.mode === 'section') state.sectionGroup = ESSAY_MODULE_NAMES.includes(preset.name) ? 'essay' : 'xingce';
   state.preset = preset; state.duration = preset.seconds; resetTimer(false); renderPresets();
+  return true;
+}
+
+function setSectionGroup(group) {
+  if (state.mode !== 'section' || !['xingce', 'essay'].includes(group) || state.status === 'running' || state.sectionGroup === group) return;
+  const names = group === 'essay' ? ESSAY_MODULE_NAMES : XINGCE_MODULE_NAMES;
+  const nextPreset = PRESETS.section.find(preset => names.includes(preset.name));
+  if (!nextPreset) return;
+  if (state.elapsed >= 1 && !appConfirm('切换专项类别会清空当前未保存的计时和打点，确定继续吗？')) return;
+  state.sectionGroup = group; state.preset = nextPreset; state.duration = nextPreset.seconds;
+  resetTimer(false); renderPresets();
 }
 
 function setMode(mode) {
   if (mode === state.mode) return;
   if (state.elapsed >= 1 && !appConfirm('切换模式会清空当前未保存的训练，确定继续吗？')) return;
-  stopInterval(); state.mode = mode; state.preset = PRESETS[mode][0]; state.duration = state.preset.seconds;
+  stopInterval(); state.mode = mode; state.preset = PRESETS[mode][0]; state.sectionGroup = mode === 'section' ? 'xingce' : state.sectionGroup; state.duration = state.preset.seconds;
   resetTimer(false);
   $$('.mode-tab').forEach(tab => { const active = tab.dataset.mode === mode; tab.classList.toggle('active', active); tab.setAttribute('aria-pressed', String(active)); });
   $('#timerHint').textContent = mode === 'single'
@@ -171,4 +191,4 @@ function saveTimedCorrectSession() {
   state.pendingTimed = null; emitAppEvent(APP_EVENTS.OPEN_TIMED_META, { result, previous: { kind: 'finish' } });
 }
 
-export { confirmFinish, openCorrectInputDialog, recordLap, renderPresets, requestFinish, resetTimer, saveQuantitySession, selectPreset, setMode, startOrPause, tick, undoLap };
+export { confirmFinish, openCorrectInputDialog, recordLap, renderPresets, requestFinish, resetTimer, saveQuantitySession, selectPreset, setMode, setSectionGroup, startOrPause, tick, undoLap };

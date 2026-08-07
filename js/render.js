@@ -22,6 +22,7 @@ function render() {
   $('#finishBtn').innerHTML = state.mode === 'single' ? '✓<span>结束并保存</span>' : '■<span>结束</span>';
   $('#resetBtn').disabled = state.status === 'idle'; $('#finishBtn').disabled = state.status === 'idle';
   $$('.preset-button').forEach(el => el.disabled = state.status === 'running');
+  $$('[data-section-group]').forEach(el => el.disabled = state.status === 'running');
   renderLapPanel(); renderPacingStatus();
 }
 

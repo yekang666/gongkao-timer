@@ -12,7 +12,7 @@ import { closeLapDetail, render, saveLapReviews, updateLapReviewFromClick, updat
 import { applyCustomDurations, beginSectionSort, finishSectionSort, moveSectionCard, moveSectionSort, renderSectionTimeSettings, saveSectionTimes, sectionSort } from './sections.js';
 import { cancelSpeedSession, finishSpeedSession, showSpeedNextStep, showSpeedPreviousStep } from './speed.js';
 import { applySettings, exportData, exportRecordsCsv, handleGlobalShortcut, renderDataManagementSummary, renderStats } from './stats.js';
-import { confirmFinish, recordLap, renderPresets, requestFinish, resetTimer, saveQuantitySession, setMode, startOrPause, tick, undoLap } from './timer.js';
+import { confirmFinish, recordLap, renderPresets, requestFinish, resetTimer, saveQuantitySession, setMode, setSectionGroup, startOrPause, tick, undoLap } from './timer.js';
 import { appConfirm, closeDrawers, resetFinishDialog, showToast, stopInterval } from './ui.js';
 
 function runShortcutAction(action) {
@@ -54,6 +54,7 @@ onAppEvent(APP_EVENTS.SHORTCUT_ACTION, runShortcutAction);
 onAppEvent(APP_EVENTS.STORAGE_ERROR, message => showToast(message));
 
 $$('.mode-tab').forEach(tab => tab.addEventListener('click', () => setMode(tab.dataset.mode)));
+$$('[data-section-group]').forEach(button => button.addEventListener('click', () => setSectionGroup(button.dataset.sectionGroup)));
 $('#startBtn').addEventListener('click', startOrPause); $('#resetBtn').addEventListener('click', () => resetTimer(true)); $('#finishBtn').addEventListener('click', requestFinish);
 $('#lapBtn').addEventListener('click', recordLap); $('#undoLapBtn').addEventListener('click', undoLap); $('#timerDisplay').addEventListener('click', recordLap);
 $('#timerDisplay').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); recordLap(); } });

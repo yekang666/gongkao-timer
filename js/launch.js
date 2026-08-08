@@ -17,7 +17,8 @@ const PRESET_SLUGS = {
   'shenlun-gaikuo': '申论概括题',
   'shenlun-fenxi': '分析理解题',
   'shenlun-duice': '提出对策题',
-  'shenlun-gongwen': '公文题'
+  'shenlun-gongwen': '公文题',
+  'shenlun-xiezuo': '写作'
 };
 
 function isStandaloneApp() {

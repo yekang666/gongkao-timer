@@ -6,7 +6,7 @@
 
 在线使用：[公考刷题计时器](https://gongkao-timer.20041108.xyz)
 
-当前版本：v2.30.0
+当前版本：v2.31.0
 
 ---
 
@@ -64,6 +64,7 @@
 | 分析理解题 | 25 分钟 |
 | 提出对策题 | 30 分钟 |
 | 公文题 | 25 分钟 |
+| 写作 | 60 分钟 |
 
 可以在「设置 → 模考节奏」中分别切换行测和申论，调整各题型时间，并通过加号决定参与模考节奏的题型；上方方案支持长按排序，也可用上移、下移和移除按钮调整。
 
@@ -326,7 +327,7 @@ iOS 的主屏幕网页图标不支持长按快捷菜单（系统限制），但�
 2. 点击底部分享按钮 → 「添加到主屏幕」。
 3. 改个名字（如「资料分析」）后添加，以后点这个图标就直接进入对应模式。
 
-常用直达参数：行测模考 `?mode=mock&preset=xingce`；申论国考 `?mode=mock&preset=shenlun-guo`；资料分析 `?mode=section&preset=ziliao`；申论概括题 `?mode=section&preset=shenlun-gaikuo`；分析理解题 `?mode=section&preset=shenlun-fenxi`；提出对策题 `?mode=section&preset=shenlun-duice`；公文题 `?mode=section&preset=shenlun-gongwen`；自由测速 `?mode=single`；数据复盘 `?view=stats`。
+常用直达参数：行测模考 `?mode=mock&preset=xingce`；申论国考 `?mode=mock&preset=shenlun-guo`；资料分析 `?mode=section&preset=ziliao`；申论概括题 `?mode=section&preset=shenlun-gaikuo`；分析理解题 `?mode=section&preset=shenlun-fenxi`；提出对策题 `?mode=section&preset=shenlun-duice`；公文题 `?mode=section&preset=shenlun-gongwen`；申论写作 `?mode=section&preset=shenlun-xiezuo`；自由测速 `?mode=single`；数据复盘 `?view=stats`。
 
 ---
 
@@ -420,10 +421,11 @@ iOS 的主屏幕网页图标不支持长按快捷菜单（系统限制），但�
 
 ## 更新记录
 
-当前版本：v2.30.0
+当前版本：v2.31.0
 
 近期重点更新：
 
+- v2.31.0：申论专项新增“写作”，默认 60 分钟，并纳入申论题型设置、节奏方案和直达参数。
 - v2.30.0：当前模考节奏支持长按排序，移动时实时显示“第 N 位”插入指示线；全部题型仍通过加号添加。
 - v2.29.4：移除模考节奏拖入和长按拖动交互，改为通过加号添加题型，使用按钮调整顺序。
 - v2.29.3：增强移动端长按拖动，增加长按浮动预览、边缘自动滚动及 Touch Events 后备通道，兼容长按后丢失 Pointer Events 的浏览器。

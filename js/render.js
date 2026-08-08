@@ -102,7 +102,8 @@ function openLapDetail(recordId) {
     return review ? { ...review } : null;
   });
   const score = toScore(record.score);
-  const resultText = score !== null ? `得分 ${formatScore(score)}` : (record.correct !== null && record.correct !== undefined ? `正确 ${record.correct}/${record.questions ?? stats.values.length} 题` : `已打点 ${stats.values.length} 题`);
+  const totalScore = toScore(record.totalScore);
+  const resultText = score !== null ? `得分 ${formatScore(score)}${totalScore !== null ? ` / 总分 ${formatScore(totalScore)}` : ''}` : (record.correct !== null && record.correct !== undefined ? `正确 ${record.correct}/${record.questions ?? stats.values.length} 题` : `已打点 ${stats.values.length} 题`);
   $('#lapDetailTitle').textContent = `${record.module} · 逐题表现`;
   $('#lapDetailMessage').textContent = `${resultText} · 中位数 ${formatClock(stats.median).slice(3)} · 最快 ${formatClock(stats.fastest).slice(3)}`;
   $('#lapDetailCount').textContent = `${stats.values.length} 题`;

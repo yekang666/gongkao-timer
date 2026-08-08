@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.31.0"
-set "COMMIT_MESSAGE=v2.31.0: add essay writing section"
+set "VERSION=v2.31.1"
+set "COMMIT_MESSAGE=v2.31.1: capture essay total and earned scores"
 
 echo === Prepare %VERSION% for GitHub ===
 

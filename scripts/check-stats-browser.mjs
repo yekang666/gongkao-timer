@@ -70,7 +70,7 @@ try {
   const exceptions = [];
   socket.onmessage = event => {
     const message = JSON.parse(event.data);
-    if (message.method === 'Runtime.exceptionThrown') exceptions.push(message.params.exceptionDetails.exception?.description || message.params.exceptionDetails.text);
+    if (message.method === 'Runtime.exceptionThrown') { const details = message.params.exceptionDetails; exceptions.push(`${details.exception?.description || details.text} @ ${details.url || 'unknown'}:${details.lineNumber ?? 0}:${details.columnNumber ?? 0}`); }
     if (message.id && pending.has(message.id)) { pending.get(message.id)(message); pending.delete(message.id); }
   };
   const call = (method, params = {}) => new Promise(resolve => {
@@ -162,6 +162,8 @@ try {
   await evaluate(`document.querySelector('[data-section-group="essay"]').click();`);
   const essayPresets = await evaluate(`({ count:document.querySelectorAll('#presetList .preset-button').length, selected:document.querySelector('#sectionGroupSwitch [aria-pressed="true"]').dataset.sectionGroup, fits:document.querySelector('#presetArea').scrollWidth <= document.querySelector('#presetArea').clientWidth, names:[...document.querySelectorAll('#presetList .preset-button strong')].map(item => item.textContent) })`);
   assert(essayPresets.count === 5 && essayPresets.selected === 'essay' && essayPresets.fits && ['\u7533\u8bba\u6982\u62ec\u9898', '\u5206\u6790\u7406\u89e3\u9898', '\u63d0\u51fa\u5bf9\u7b56\u9898', '\u516c\u6587\u9898', '\u5199\u4f5c'].every(name => essayPresets.names.includes(name)), 'Essay section group is incorrect');
+  const finishFields = await evaluate(`({ total:Boolean(document.querySelector('#totalScoreInputWrap')), scoreLabel:document.querySelector('#scoreInputLabel').textContent, questions:Boolean(document.querySelector('#questionInputWrap')), correct:Boolean(document.querySelector('#correctInputWrap')) })`);
+  assert(finishFields.total && finishFields.scoreLabel === '\u672c\u6b21\u5206\u6570' && finishFields.questions && finishFields.correct, 'Essay finish dialog fields are incomplete');
   await screenshot('essay-sections-mobile.png');
   await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await sleep(100);

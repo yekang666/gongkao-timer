@@ -48,7 +48,7 @@ function getRecordMergeKey(record) {
   return `fallback:${[
     record?.mode, record?.module, record?.startedAt, record?.endedAt,
     record?.duration, record?.planned, record?.questions, record?.correct,
-    record?.score, record?.papers
+    record?.score, record?.totalScore, record?.papers
   ].map(value => String(value ?? '')).join('|')}`;
 }
 

@@ -196,9 +196,9 @@ function getDefaultQuestionCount() {
   return state.mode === 'section' ? (SECTION_QUESTION_COUNTS[state.preset.name] || null) : null;
 }
 
-function saveSession(questions, papers = null, correct = null, score = null, laps = [], meta = {}, moduleResults = [], endedAt = new Date().toISOString()) {
+function saveSession(questions, papers = null, correct = null, score = null, laps = [], meta = {}, moduleResults = [], endedAt = new Date().toISOString(), totalScore = null) {
   if (state.elapsed < 1) return null;
-  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt, questions, papers, correct, score, laps: normalizeLaps(laps), lapReviews: [], moduleResults: normalizeModuleResults(moduleResults), ...normalizeTrainingMeta(meta) };
+  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt, questions, papers, correct, score, totalScore, laps: normalizeLaps(laps), lapReviews: [], moduleResults: normalizeModuleResults(moduleResults), ...normalizeTrainingMeta(meta) };
   const previousRecords = [...state.records];
   state.records.unshift(savedRecord);
   state.records = capRecords(state.records);

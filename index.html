@@ -20,7 +20,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><img src="assets/app-icon.png" alt=""></span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.31.0</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.31.1</span></div><small>训练工作台</small></div>
       </div>
       <div class="exam-countdown" id="examCountdown">
         <button class="exam-countdown-main" id="examCountdownOpenBtn" type="button" title="设置考试倒计时">
@@ -158,7 +158,8 @@
 
   <dialog id="finishDialog" aria-labelledby="dialogTitle">
     <div class="dialog-icon">✓</div><h2 id="dialogTitle">本次训练已完成</h2><p id="dialogMessage"></p>
-    <label class="question-input hidden" id="scoreInputWrap">本次分数<input id="finishScore" type="number" min="0" max="100" step="0.5" inputmode="decimal" value=""></label>
+    <label class="question-input hidden" id="totalScoreInputWrap">总分<input id="finishTotalScore" type="number" min="0.5" max="100" step="0.5" inputmode="decimal" value=""></label>
+    <label class="question-input hidden" id="scoreInputWrap"><span id="scoreInputLabel">本次分数</span><input id="finishScore" type="number" min="0" max="100" step="0.5" inputmode="decimal" value=""></label>
     <label class="question-input hidden" id="questionInputWrap">完成题数<input id="finishQuestionCount" type="number" min="1" step="1" inputmode="numeric" value=""></label>
     <label class="question-input hidden" id="correctInputWrap">正确数量<input id="finishCorrectCount" type="number" min="0" step="1" inputmode="numeric" value=""></label>
     <div class="quantity-choice hidden" id="quantityChoiceWrap">

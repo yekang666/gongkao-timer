@@ -110,7 +110,8 @@ function renderStats() {
   $('#historyNextBtn').disabled = state.historyPage >= pageCount;
   $('#historyList').innerHTML = pageRecords.length ? pageRecords.map(r => {
     const accuracyText = hasAccuracy(r) ? ` · 正确 ${r.correct}/${r.questions} · 正确率 ${formatAccuracy(r.correct, r.questions)}` : '';
-    const scoreText = toScore(r.score) !== null ? ` · ${formatScore(toScore(r.score))}` : '';
+    const score = toScore(r.score), totalScore = toScore(r.totalScore);
+    const scoreText = score !== null ? ` · 得分 ${formatScore(score)}${totalScore !== null ? ` / 总分 ${formatScore(totalScore)}` : ''}` : '';
     const lapCount = normalizeLaps(r.laps).length, reviewCounts = getLapReviewCounts(normalizeLapReviews(r.lapReviews, lapCount), lapCount);
     const reportLink = r.module === '行测模考' ? `<button class="lap-detail-button" data-mock-report-id="${escapeAttribute(r.id)}" type="button">查看模考报告</button>` : '';
     const lapLink = lapCount ? `<button class="lap-detail-button" data-lap-id="${escapeAttribute(r.id)}" type="button">${reviewCounts.reviewed ? `逐题复盘 ${reviewCounts.reviewed}/${lapCount} 题` : `开始 ${lapCount} 题逐题复盘`}</button>` : '';
@@ -217,9 +218,9 @@ function csvCell(value) {
 
 function buildRecordsCsv(records = normalizeRecords(state.records)) {
   const modeNames = { mock: '模考模式', section: '专项模式', single: '自由测速' };
-  const headers = ['日期时间', '模式', '题型', '用时', '计划用时', '题数', '正确数', '正确率', '分数', '打点数', '来源', '难度', '备注'];
+  const headers = ['日期时间', '模式', '题型', '用时', '计划用时', '题数', '正确数', '正确率', '得分', '总分', '打点数', '来源', '难度', '备注'];
   const rows = records.map(record => {
-    const questions = toPositiveInt(record.questions), correct = toNonNegativeInt(record.correct), score = toScore(record.score);
+    const questions = toPositiveInt(record.questions), correct = toNonNegativeInt(record.correct), score = toScore(record.score), totalScore = toScore(record.totalScore);
     return [
       formatExportDateTime(record.endedAt),
       modeNames[record.mode] || record.mode || '',
@@ -230,6 +231,7 @@ function buildRecordsCsv(records = normalizeRecords(state.records)) {
       correct ?? '',
       questions && correct !== null ? formatAccuracy(correct, questions) : '',
       score !== null ? score : '',
+      totalScore !== null ? totalScore : '',
       Array.isArray(record.laps) ? record.laps.length : 0,
       record.source || '',
       record.difficulty || '',

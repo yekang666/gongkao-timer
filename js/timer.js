@@ -127,7 +127,8 @@ function requestFinish() {
   const lapQuestions = state.laps.length || null;
   if (state.mode === 'mock') { openCorrectInputDialog(lapQuestions, { papers: 1, score: true, endedAt }); return; }
   if (state.preset.name === '数量关系' && !lapQuestions) { openQuantityChoiceDialog(endedAt); return; }
-  openCorrectInputDialog(lapQuestions || SECTION_QUESTION_COUNTS[state.preset.name] || null, { endedAt });
+  const isEssaySection = ESSAY_MODULE_NAMES.includes(state.preset.name);
+  openCorrectInputDialog(isEssaySection ? null : (lapQuestions || SECTION_QUESTION_COUNTS[state.preset.name] || null), { endedAt, score: isEssaySection, totalScore: isEssaySection });
 }
 
 function confirmFinish() {
@@ -139,7 +140,7 @@ function openQuantityChoiceDialog(endedAt = new Date().toISOString()) {
   state.pendingTimed = { step: 'quantity', endedAt };
   $('#dialogTitle').textContent = '选择数量关系题量';
   $('#dialogMessage').textContent = `本次训练 ${formatDuration(state.elapsed)}，请选择本组数量关系题量。`;
-  $('#scoreInputWrap').classList.add('hidden'); $('#questionInputWrap').classList.add('hidden'); $('#correctInputWrap').classList.add('hidden'); $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.add('hidden');
+  $('#totalScoreInputWrap').classList.add('hidden'); $('#scoreInputWrap').classList.add('hidden'); $('#questionInputWrap').classList.add('hidden'); $('#correctInputWrap').classList.add('hidden'); $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.add('hidden');
   $('#quantityChoiceWrap').classList.remove('hidden'); $('#finishDialog').showModal();
 }
 
@@ -150,27 +151,40 @@ function saveQuantitySession(questions) {
 
 function openCorrectInputDialog(questions, options = {}) {
   if (!questions && !options.editableQuestions && !options.score) { emitAppEvent(APP_EVENTS.OPEN_TIMED_META, { result: { questions: null, papers: null, correct: null, score: null, endedAt: options.endedAt || new Date().toISOString() } }); return; }
-  state.pendingTimed = { step: 'correct', questions, papers: options.papers ?? null, editableQuestions: Boolean(options.editableQuestions), score: Boolean(options.score), endedAt: options.endedAt || options.initial?.endedAt || new Date().toISOString(), metaDraft: options.initial?.metaDraft || null };
-  $('#dialogTitle').textContent = options.score ? '填写本次分数' : (options.editableQuestions ? '填写本次正确率' : '填写正确数量');
-  $('#dialogMessage').textContent = options.score ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入本次得分。` : (options.editableQuestions ? `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入完成题数和正确数量。` : `本次共 ${questions} 题，请输入做对的题数。`);
+  state.pendingTimed = { step: 'correct', questions, papers: options.papers ?? null, editableQuestions: Boolean(options.editableQuestions), score: Boolean(options.score), totalScore: Boolean(options.totalScore), endedAt: options.endedAt || options.initial?.endedAt || new Date().toISOString(), metaDraft: options.initial?.metaDraft || null };
+  const hasTotalScore = Boolean(options.totalScore);
+  $('#dialogTitle').textContent = hasTotalScore ? '填写总分与得分' : (options.score ? '填写本次分数' : (options.editableQuestions ? '填写本次正确率' : '填写正确数量'));
+  if (hasTotalScore) $('#dialogMessage').textContent = `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入本题总分和实际得分。`;
+  else if (options.score) $('#dialogMessage').textContent = `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入本次得分。`;
+  else if (options.editableQuestions) $('#dialogMessage').textContent = `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入完成题数和正确数量。`;
+  else $('#dialogMessage').textContent = `本次共 ${questions} 题，请输入做对的题数。`;
   const initial = options.initial || {};
+  $('#finishTotalScore').value = initial.totalScore ?? '';
   $('#finishScore').value = initial.score ?? '';
   $('#finishQuestionCount').value = initial.questions ?? (questions ? String(questions) : '');
   $('#finishCorrectCount').max = questions ? String(questions) : '';
   $('#finishCorrectCount').value = initial.correct ?? (questions ? String(questions) : '');
+  $('#totalScoreInputWrap').classList.toggle('hidden', !hasTotalScore);
   $('#scoreInputWrap').classList.toggle('hidden', !options.score);
+  $('#scoreInputLabel').textContent = hasTotalScore ? '得分' : '本次分数';
   $('#questionInputWrap').classList.toggle('hidden', !options.editableQuestions);
   $('#quantityChoiceWrap').classList.add('hidden'); $('#correctInputWrap').classList.toggle('hidden', options.score);
   $('#cancelFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').classList.remove('hidden'); $('#confirmFinishBtn').textContent = '下一步：复盘'; $('#finishDialog').showModal();
-  (options.score ? $('#finishScore') : (options.editableQuestions ? $('#finishQuestionCount') : $('#finishCorrectCount'))).focus();
+  (hasTotalScore ? $('#finishTotalScore') : (options.score ? $('#finishScore') : (options.editableQuestions ? $('#finishQuestionCount') : $('#finishCorrectCount')))).focus();
 }
 
 function saveTimedCorrectSession() {
   let questions = state.pendingTimed.questions;
   let score = null;
+  let totalScore = null;
+  if (state.pendingTimed.totalScore) {
+    totalScore = toScore($('#finishTotalScore').value);
+    if (totalScore === null || totalScore <= 0) { showToast('总分需在 0 到 100 之间'); $('#finishTotalScore').focus(); return; }
+  }
   if (state.pendingTimed.score) {
     score = toScore($('#finishScore').value);
     if (score === null) { showToast('分数需在 0 到 100 之间'); $('#finishScore').focus(); return; }
+    if (totalScore !== null && score > totalScore) { showToast('得分不能高于总分'); $('#finishScore').focus(); return; }
   }
   if (state.pendingTimed.editableQuestions) {
     questions = toPositiveInt($('#finishQuestionCount').value);
@@ -180,7 +194,7 @@ function saveTimedCorrectSession() {
   const correct = state.pendingTimed.score ? null : toNonNegativeInt($('#finishCorrectCount').value);
   if (!state.pendingTimed.score && (correct === null || correct > questions)) { showToast(`正确数量需在 0 到 ${questions} 之间`); $('#finishCorrectCount').focus(); return; }
   const papers = state.pendingTimed.papers;
-  const result = { questions, papers, correct, score, endedAt: state.pendingTimed.endedAt, metaDraft: state.pendingTimed.metaDraft };
+  const result = { questions, papers, correct, score, totalScore, endedAt: state.pendingTimed.endedAt, metaDraft: state.pendingTimed.metaDraft };
   $('#finishDialog').close(); resetFinishDialog();
   if (state.pendingTimed.score && state.mode === 'mock' && state.preset.name === '行测模考') {
     const restored = state.pendingMockModuleDraft;

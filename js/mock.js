@@ -87,8 +87,8 @@ function beginTimedMeta(result, previous = null) {
   openTrainingMetaDialog(`${state.preset.name} · 训练复盘`, result.metaDraft, Boolean(previous));
 }
 
-function finalizeTimedSession(questions, papers, correct = null, score = null, meta = {}, moduleResults = [], endedAt = new Date().toISOString()) {
-  const savedRecord = saveSession(questions, papers, correct, score, state.laps, meta, moduleResults, endedAt);
+function finalizeTimedSession(questions, papers, correct = null, score = null, meta = {}, moduleResults = [], endedAt = new Date().toISOString(), totalScore = null) {
+  const savedRecord = saveSession(questions, papers, correct, score, state.laps, meta, moduleResults, endedAt, totalScore);
   if (!savedRecord) return;
   resetTimer(false);
   const accuracyText = questions && correct !== null ? `，正确率 ${formatAccuracy(correct, questions)}` : '';
@@ -193,8 +193,8 @@ function finishTrainingMeta(skip = false) {
   const meta = skip ? (pending.context === 'mock-edit' ? pending.previousMeta : normalizeTrainingMeta()) : readTrainingMeta();
   state.pendingMeta = null; $('#trainingMetaDialog').close();
   if (pending.context === 'timed') {
-    const { questions, papers, correct, score, moduleResults = [], endedAt } = pending.result;
-    finalizeTimedSession(questions, papers, correct, score, meta, moduleResults, endedAt);
+    const { questions, papers, correct, score, totalScore, moduleResults = [], endedAt } = pending.result;
+    finalizeTimedSession(questions, papers, correct, score, meta, moduleResults, endedAt, totalScore);
   } else if (pending.context === 'speed') finalizeSpeedSession(pending.moduleName, meta);
   else if (pending.context === 'mock-edit') {
     const record = state.records.find(item => item.id === pending.recordId); if (!record) return;

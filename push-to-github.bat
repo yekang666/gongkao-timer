@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.30.0"
-set "COMMIT_MESSAGE=v2.30.0: visualize long-press pacing reorder"
+set "VERSION=v2.31.0"
+set "COMMIT_MESSAGE=v2.31.0: add essay writing section"
 
 echo === Prepare %VERSION% for GitHub ===
 

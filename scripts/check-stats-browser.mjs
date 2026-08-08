@@ -87,6 +87,27 @@ try {
     const result = await call('Page.captureScreenshot', { format: 'png', fromSurface: true });
     fs.writeFileSync(path.join(SCREENSHOT_DIR, filename), Buffer.from(result.result.data, 'base64'));
   };
+  const longPressReorder = async (sourceName, afterName) => {
+    const points = await evaluate(`(() => {
+      const source=document.querySelector('[data-pacing-plan-card][data-pacing-name="${sourceName}"] .pacing-plan-main');
+      const target=document.querySelector('[data-pacing-plan-card][data-pacing-name="${afterName}"]');
+      if (!source || !target) return null;
+      const from=source.getBoundingClientRect(), to=target.getBoundingClientRect();
+      return { from:{x:from.left + from.width / 2,y:from.top + from.height / 2}, to:{x:to.left + to.width / 2,y:to.bottom - 2} };
+    })()`);
+    assert(points, `Pacing reorder cards were not found: ${sourceName} -> ${afterName}`);
+    await call('Input.dispatchTouchEvent', { type:'touchStart', touchPoints:[{ x:points.from.x, y:points.from.y, id:3 }] });
+    await sleep(260);
+    const activated = await evaluate(`({ preview:Boolean(document.querySelector('.pacing-reorder-preview')), label:document.querySelector('.pacing-position-indicator span')?.textContent || '' })`);
+    assert(activated.preview && activated.label.includes('1'), `Pacing reorder did not show its initial position: ${JSON.stringify(activated)}`);
+    await call('Input.dispatchTouchEvent', { type:'touchMove', touchPoints:[{ x:points.to.x, y:points.to.y, id:3 }] });
+    await sleep(60);
+    const predicted = await evaluate(`document.querySelector('.pacing-position-indicator span')?.textContent || ''`);
+    assert(predicted.includes('2'), `Pacing reorder did not visualize the expected second position: ${predicted}`);
+    await screenshot('pacing-reorder-position-mobile.png');
+    await call('Input.dispatchTouchEvent', { type:'touchEnd', touchPoints:[] });
+    return predicted;
+  };
   await call('Runtime.enable');
   await call('Page.enable');
   await call('Page.reload', { ignoreCache: true });
@@ -160,11 +181,11 @@ try {
   assert(essayPacingSettings.group === 'essay' && essayPacingSettings.catalog === 4 && essayPacingSettings.plan === 4, 'Essay pacing builder is incorrect');
   await evaluate(`document.querySelector('[data-pacing-remove][data-pacing-name="\u7533\u8bba\u6982\u62ec\u9898"]').click();`);
   await evaluate(`document.querySelector('[data-pacing-add][data-pacing-name="\u7533\u8bba\u6982\u62ec\u9898"]').click();`);
-  await evaluate(`document.querySelector('[data-pacing-move][data-pacing-name="\u63d0\u51fa\u5bf9\u7b56\u9898"][data-pacing-move="-1"]').click();`);
   await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await sleep(100);
+  const predictedPosition = await longPressReorder('\u5206\u6790\u7406\u89e3\u9898', '\u63d0\u51fa\u5bf9\u7b56\u9898');
   const essayPlan = await evaluate(`({ plan:document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]').length, order:[...document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]')].map(item => item.dataset.pacingName), fits:document.querySelector('#pacingPlanZone').scrollWidth <= document.querySelector('#pacingPlanZone').clientWidth && document.querySelector('#sectionTimeGrid').scrollWidth <= document.querySelector('#sectionTimeGrid').clientWidth })`);
-  assert(essayPlan.plan === 4 && essayPlan.order[0] === '\u63d0\u51fa\u5bf9\u7b56\u9898' && essayPlan.order.includes('\u7533\u8bba\u6982\u62ec\u9898') && essayPlan.fits, `Essay pacing add/reorder failed or overflowed the mobile layout: ${JSON.stringify(essayPlan)}`);
+  assert(essayPlan.plan === 4 && essayPlan.order[0] === '\u63d0\u51fa\u5bf9\u7b56\u9898' && essayPlan.order.includes('\u7533\u8bba\u6982\u62ec\u9898') && essayPlan.fits && predictedPosition.includes('2'), `Essay pacing add/reorder failed or overflowed the mobile layout: ${JSON.stringify(essayPlan)}`);
   await evaluate(`document.querySelector('[data-pacing-group="xingce"]').click();`);
   const retainedXingcePlan = await evaluate(`({ plan:document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]').length, removed:!document.querySelector('#pacingPlanList [data-pacing-name="\u5e38\u8bc6\u5224\u65ad"]'), addEnabled:!document.querySelector('[data-pacing-add][data-pacing-name="\u5e38\u8bc6\u5224\u65ad"]').disabled })`);
   assert(retainedXingcePlan.plan === 5 && retainedXingcePlan.removed && retainedXingcePlan.addEnabled, 'Xingce and essay pacing plans did not remain independent');
@@ -186,7 +207,7 @@ try {
 
   assert(!exceptions.length, `Browser exceptions: ${exceptions.join('; ')}`);
   console.log(`OK: trend daily=${trend.bars}, monthly=${groupedTrend.bars}, baseline=${baseline.cards} cards, module history=${moduleHistory.rows} rows, xingce presets=${xingcePresets.count}, essay presets=${essayPresets.count}, essay plan=${essayPlan.plan}`);
-  console.log(`Screenshots: ${path.join(SCREENSHOT_DIR, 'essay-sections-desktop.png')}, ${path.join(SCREENSHOT_DIR, 'essay-sections-mobile.png')}, ${path.join(SCREENSHOT_DIR, 'essay-pacing-desktop.png')}, ${path.join(SCREENSHOT_DIR, 'essay-pacing-mobile.png')}`);
+  console.log(`Screenshots: ${path.join(SCREENSHOT_DIR, 'essay-sections-desktop.png')}, ${path.join(SCREENSHOT_DIR, 'essay-sections-mobile.png')}, ${path.join(SCREENSHOT_DIR, 'essay-pacing-desktop.png')}, ${path.join(SCREENSHOT_DIR, 'essay-pacing-mobile.png')}, ${path.join(SCREENSHOT_DIR, 'pacing-reorder-position-mobile.png')}`);
 } finally {
   socket?.close();
   browser.kill();

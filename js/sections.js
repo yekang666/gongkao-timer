@@ -4,6 +4,8 @@ import { showToast } from './ui.js';
 
 const PACING_GROUPS = { xingce: XINGCE_MODULE_NAMES, essay: ESSAY_MODULE_NAMES };
 const PACING_GROUP_LABELS = { xingce: '行测', essay: '申论' };
+let pacingReorder = null;
+let pacingReorderTimer = null;
 
 function getPacingGroup(group = state.settings.pacingGroup) {
   return group === 'essay' ? 'essay' : 'xingce';
@@ -155,6 +157,122 @@ function movePacingPreset(name, direction) {
   savePacingChanges();
 }
 
+function reorderPacingPreset(name, targetIndex) {
+  const group = getPacingGroup();
+  syncVisibleSectionDurations();
+  const plans = normalizePacingPlans(), current = plans[group], sourceIndex = current.indexOf(name);
+  if (sourceIndex < 0) return;
+  const next = current.filter(item => item !== name);
+  next.splice(Math.max(0, Math.min(Number(targetIndex) || 0, next.length)), 0, name);
+  plans[group] = next;
+  state.settings.pacingPlans = plans;
+  savePacingChanges();
+}
+
+function positionPacingReorderPreview(drag) {
+  if (!drag.preview) return;
+  const left = Math.min(window.innerWidth - drag.preview.offsetWidth - 8, drag.clientX + 12);
+  const top = Math.max(8, Math.min(window.innerHeight - drag.preview.offsetHeight - 8, drag.clientY - drag.preview.offsetHeight / 2));
+  drag.preview.style.transform = `translate3d(${Math.max(8, left)}px,${top}px,0)`;
+}
+
+function updatePacingReorderPosition(drag) {
+  if (!drag.active) return;
+  const list = $('#pacingPlanList');
+  const cards = $$('[data-pacing-plan-card]').filter(card => card !== drag.card);
+  let targetIndex = cards.findIndex(card => drag.clientY < card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2);
+  if (targetIndex < 0) targetIndex = cards.length;
+  const listRect = list.getBoundingClientRect();
+  const anchorRect = targetIndex < cards.length ? cards[targetIndex].getBoundingClientRect() : cards.at(-1)?.getBoundingClientRect();
+  const top = targetIndex < cards.length ? anchorRect.top - 3 : (anchorRect?.bottom || listRect.top) + 3;
+  drag.targetIndex = targetIndex;
+  drag.indicator.style.width = `${Math.max(0, listRect.width - 12)}px`;
+  drag.indicator.style.transform = `translate3d(${listRect.left + 6}px,${top}px,0)`;
+  drag.indicator.firstElementChild.textContent = `第 ${targetIndex + 1} 位`;
+  positionPacingReorderPreview(drag);
+}
+
+function activatePacingReorder(drag) {
+  if (!drag || drag.active || pacingReorder !== drag) return;
+  drag.active = true;
+  drag.card.classList.add('reordering');
+  document.body.classList.add('pacing-reordering');
+  drag.preview = document.createElement('div');
+  drag.preview.className = 'pacing-reorder-preview';
+  drag.preview.textContent = drag.name;
+  drag.indicator = document.createElement('div');
+  drag.indicator.className = 'pacing-position-indicator';
+  drag.indicator.innerHTML = '<span></span>';
+  document.body.append(drag.preview, drag.indicator);
+  updatePacingReorderPosition(drag);
+}
+
+function clearPacingReorder(drag) {
+  clearTimeout(pacingReorderTimer);
+  pacingReorderTimer = null;
+  drag?.preview?.remove();
+  drag?.indicator?.remove();
+  drag?.card?.classList.remove('reordering');
+  document.body.classList.remove('pacing-reordering');
+}
+
+function handlePacingReorderPointerDown(event) {
+  if (event.isPrimary === false || (event.pointerType === 'mouse' && event.button !== 0) || state.status === 'running') return;
+  if (event.target.closest('button,input,select,textarea')) return;
+  const card = event.target.closest('[data-pacing-plan-card]');
+  if (!card) return;
+  event.preventDefault();
+  pacingReorder = { pointerId: event.pointerId, pointerType: event.pointerType, touchIdentifier: null, card, name: card.dataset.pacingName, clientX: event.clientX, clientY: event.clientY, targetIndex: 0, active: false, preview: null, indicator: null };
+  card.setPointerCapture?.(event.pointerId);
+  pacingReorderTimer = setTimeout(() => activatePacingReorder(pacingReorder), 220);
+}
+
+function handlePacingReorderPointerMove(event) {
+  const drag = pacingReorder;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  drag.clientX = event.clientX;
+  drag.clientY = event.clientY;
+  if (!drag.active) return;
+  event.preventDefault();
+  updatePacingReorderPosition(drag);
+}
+
+function handlePacingReorderPointerEnd(event) {
+  const drag = pacingReorder;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  const shouldReorder = drag.active && event.type === 'pointerup';
+  const targetIndex = drag.targetIndex;
+  if (drag.card.hasPointerCapture?.(event.pointerId)) drag.card.releasePointerCapture(event.pointerId);
+  pacingReorder = null;
+  clearPacingReorder(drag);
+  if (shouldReorder) reorderPacingPreset(drag.name, targetIndex);
+}
+
+function handlePacingReorderTouchStart(event) {
+  const touch = event.changedTouches[0];
+  if (!touch) return;
+  if (pacingReorder?.pointerType === 'touch') {
+    pacingReorder.touchIdentifier = touch.identifier;
+    return;
+  }
+  handlePacingReorderPointerDown({ isPrimary: true, button: 0, pointerType: 'touch', pointerId: `touch-${touch.identifier}`, target: event.target, clientX: touch.clientX, clientY: touch.clientY, preventDefault: () => event.preventDefault() });
+  if (pacingReorder) pacingReorder.touchIdentifier = touch.identifier;
+}
+
+function handlePacingReorderTouchMove(event) {
+  const drag = pacingReorder;
+  if (!drag || drag.touchIdentifier === null) return;
+  const touch = [...event.touches].find(item => item.identifier === drag.touchIdentifier);
+  if (touch) handlePacingReorderPointerMove({ pointerId: drag.pointerId, clientX: touch.clientX, clientY: touch.clientY, preventDefault: () => event.preventDefault() });
+}
+
+function handlePacingReorderTouchEnd(event) {
+  const drag = pacingReorder;
+  if (!drag || drag.touchIdentifier === null) return;
+  const touch = [...event.changedTouches].find(item => item.identifier === drag.touchIdentifier);
+  if (touch) handlePacingReorderPointerEnd({ type: event.type === 'touchend' ? 'pointerup' : 'pointercancel', pointerId: drag.pointerId });
+}
+
 function saveSectionTimes() {
   syncVisibleSectionDurations();
   savePacingChanges('专项时间已保存');
@@ -173,4 +291,4 @@ function applySectionOrder(order = state.settings.sectionOrder) {
   state.settings.pacingPlans = plans;
 }
 
-export { addPacingPreset, applyCustomDurations, applySectionOrder, getOrderedSectionPresets, getPacingPlansSnapshot, getSectionDurations, getSectionDurationSnapshot, getSectionOrderSnapshot, movePacingPreset, normalizeSectionOrder, removePacingPreset, renderSectionTimeSettings, saveSectionTimes, setPacingGroup };
+export { addPacingPreset, applyCustomDurations, applySectionOrder, getOrderedSectionPresets, getPacingPlansSnapshot, getSectionDurations, getSectionDurationSnapshot, getSectionOrderSnapshot, handlePacingReorderPointerDown, handlePacingReorderPointerEnd, handlePacingReorderPointerMove, handlePacingReorderTouchEnd, handlePacingReorderTouchMove, handlePacingReorderTouchStart, movePacingPreset, normalizeSectionOrder, removePacingPreset, renderSectionTimeSettings, saveSectionTimes, setPacingGroup };

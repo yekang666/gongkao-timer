@@ -9,7 +9,7 @@ import { beginTimedMeta, editMockReport, finishMockModuleReview, finishTrainingM
 import { pipVideo, stopMobilePipSyncLoop, stopPipFrames, syncNativeVideoTime, togglePip } from './pip.js';
 import { closeRecordCreator, closeRecordEditor, openRecordCreator, openRecordFromHistoryEvent, openRecordFromHistoryKey, saveRecordCreator, saveRecordEditor, setDifficultyChoice } from './records.js';
 import { closeLapDetail, render, saveLapReviews, updateLapReviewFromClick, updateLapReviewNote } from './render.js';
-import { addPacingPreset, applyCustomDurations, movePacingPreset, removePacingPreset, renderSectionTimeSettings, saveSectionTimes, setPacingGroup } from './sections.js';
+import { addPacingPreset, applyCustomDurations, handlePacingReorderPointerDown, handlePacingReorderPointerEnd, handlePacingReorderPointerMove, handlePacingReorderTouchEnd, handlePacingReorderTouchMove, handlePacingReorderTouchStart, movePacingPreset, removePacingPreset, renderSectionTimeSettings, saveSectionTimes, setPacingGroup } from './sections.js';
 import { cancelSpeedSession, finishSpeedSession, showSpeedNextStep, showSpeedPreviousStep } from './speed.js';
 import { applySettings, exportData, exportRecordsCsv, handleGlobalShortcut, renderDataManagementSummary, renderStats } from './stats.js';
 import { confirmFinish, recordLap, renderPresets, requestFinish, resetTimer, saveQuantitySession, setMode, setSectionGroup, startOrPause, tick, undoLap } from './timer.js';
@@ -136,6 +136,14 @@ $('#pacingPlanList').addEventListener('click', event => {
   const remove = event.target.closest('[data-pacing-remove]'); if (remove) { removePacingPreset(remove.dataset.pacingName); return; }
   const move = event.target.closest('[data-pacing-move]'); if (move) movePacingPreset(move.dataset.pacingName, move.dataset.pacingMove);
 });
+document.addEventListener('pointerdown', handlePacingReorderPointerDown);
+document.addEventListener('pointermove', handlePacingReorderPointerMove, { passive: false });
+document.addEventListener('pointerup', handlePacingReorderPointerEnd);
+document.addEventListener('pointercancel', handlePacingReorderPointerEnd);
+document.addEventListener('touchstart', handlePacingReorderTouchStart, { passive: false });
+document.addEventListener('touchmove', handlePacingReorderTouchMove, { passive: false });
+document.addEventListener('touchend', handlePacingReorderTouchEnd, { passive: false });
+document.addEventListener('touchcancel', handlePacingReorderTouchEnd, { passive: false });
 $('#exportDataBtn').addEventListener('click', exportData); $('#exportCsvBtn').addEventListener('click', exportRecordsCsv); $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click()); $('#importDataInput').addEventListener('change', e => { importDataFile(e.target.files[0]); e.target.value = ''; });
 $('#cancelRestoreBtn').addEventListener('click', cancelRestoreImport); $('#confirmMergeRestoreBtn').addEventListener('click', () => confirmRestoreImport('merge')); $('#confirmRestoreBtn').addEventListener('click', () => confirmRestoreImport('replace'));
 $('#pipBtn').addEventListener('click',togglePip);

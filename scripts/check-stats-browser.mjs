@@ -87,46 +87,6 @@ try {
     const result = await call('Page.captureScreenshot', { format: 'png', fromSurface: true });
     fs.writeFileSync(path.join(SCREENSHOT_DIR, filename), Buffer.from(result.result.data, 'base64'));
   };
-  const getDragPoints = async (sourceSelector, targetSelector) => {
-    const points = await evaluate(`(() => {
-      const source = document.querySelector(${JSON.stringify(sourceSelector)});
-      const target = document.querySelector(${JSON.stringify(targetSelector)});
-      if (!source || !target) return null;
-      const from = source.getBoundingClientRect(), to = target.getBoundingClientRect();
-      return { from:{ x:from.left + from.width / 2, y:from.top + from.height / 2 }, to:{ x:to.left + to.width / 2, y:to.top + to.height - 12 }, viewport:{ width:innerWidth, height:innerHeight } };
-    })()`);
-    assert(points, `Drag elements were not found: ${sourceSelector} -> ${targetSelector}`);
-    assert([points.from, points.to].every(point => point.x >= 0 && point.y >= 0 && point.x <= points.viewport.width && point.y <= points.viewport.height), `Drag coordinates are outside the viewport: ${JSON.stringify(points)}`);
-    return points;
-  };
-  const drag = async (sourceSelector, targetSelector) => {
-    const points = await getDragPoints(sourceSelector, targetSelector);
-    await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: points.from.x, y: points.from.y });
-    await call('Input.dispatchMouseEvent', { type: 'mousePressed', x: points.from.x, y: points.from.y, button: 'left', buttons: 1, clickCount: 1 });
-    await sleep(30);
-    for (let step = 1; step <= 8; step += 1) {
-      const progress = step / 8;
-      await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: points.from.x + (points.to.x - points.from.x) * progress, y: points.from.y + (points.to.y - points.from.y) * progress, button: 'left', buttons: 1 });
-      await sleep(20);
-    }
-    await call('Input.dispatchMouseEvent', { type: 'mouseReleased', x: points.to.x, y: points.to.y, button: 'left', buttons: 0, clickCount: 1 });
-  };
-  const touchDrag = async (sourceSelector, targetSelector) => {
-    const points = await getDragPoints(sourceSelector, targetSelector);
-    await call('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: points.from.x, y: points.from.y, id: 1 }] });
-    await sleep(220);
-    const held = await evaluate(`({ active:document.body.classList.contains('pacing-pointer-dragging'), preview:Boolean(document.querySelector('.pacing-drag-preview')) })`);
-    assert(held.active && held.preview, `Long press did not activate pacing drag: ${JSON.stringify(held)}`);
-    for (let step = 1; step <= 8; step += 1) {
-      const progress = step / 8;
-      await call('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: points.from.x + (points.to.x - points.from.x) * progress, y: points.from.y + (points.to.y - points.from.y) * progress, id: 1 }] });
-      await sleep(20);
-    }
-    const during = await evaluate(`({ active:document.body.classList.contains('pacing-pointer-dragging'), zone:document.querySelector('#pacingPlanZone').classList.contains('drag-active'), preview:Boolean(document.querySelector('.pacing-drag-preview')), scrollTop:document.querySelector('#settingsDrawer').scrollTop, target:document.elementFromPoint(${points.to.x},${points.to.y})?.id || document.elementFromPoint(${points.to.x},${points.to.y})?.className || '' })`);
-    await call('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    return during;
-  };
-
   await call('Runtime.enable');
   await call('Page.enable');
   await call('Page.reload', { ignoreCache: true });
@@ -191,18 +151,20 @@ try {
   await evaluate(`document.querySelector('[data-pacing-remove][data-pacing-name="\u5e38\u8bc6\u5224\u65ad"]').click();`);
   const removedXingce = await evaluate(`({ plan:document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]').length, addEnabled:!document.querySelector('[data-pacing-add][data-pacing-name="\u5e38\u8bc6\u5224\u65ad"]').disabled })`);
   assert(removedXingce.plan === 5 && removedXingce.addEnabled, 'Removing an xingce pacing card failed');
+  await evaluate(`document.querySelector('[data-pacing-add][data-pacing-name="\u5e38\u8bc6\u5224\u65ad"]').click();`);
+  const addedXingce = await evaluate(`({ plan:document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]').length, included:Boolean(document.querySelector('#pacingPlanList [data-pacing-name="\u5e38\u8bc6\u5224\u65ad"]')) })`);
+  assert(addedXingce.plan === 6 && addedXingce.included, 'Adding an xingce pacing card with the plus button failed');
+  await evaluate(`document.querySelector('[data-pacing-remove][data-pacing-name="\u5e38\u8bc6\u5224\u65ad"]').click();`);
   await evaluate(`document.querySelector('[data-pacing-group="essay"]').click();`);
   const essayPacingSettings = await evaluate(`({ group:document.querySelector('#pacingGroupSwitch [aria-pressed="true"]').dataset.pacingGroup, catalog:document.querySelectorAll('#sectionTimeGrid [data-section-time]').length, plan:document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]').length })`);
   assert(essayPacingSettings.group === 'essay' && essayPacingSettings.catalog === 4 && essayPacingSettings.plan === 4, 'Essay pacing builder is incorrect');
   await evaluate(`document.querySelector('[data-pacing-remove][data-pacing-name="\u7533\u8bba\u6982\u62ec\u9898"]').click();`);
-  await drag('[data-pacing-catalog-card][data-pacing-name="\u7533\u8bba\u6982\u62ec\u9898"] label > span', '#pacingPlanZone');
+  await evaluate(`document.querySelector('[data-pacing-add][data-pacing-name="\u7533\u8bba\u6982\u62ec\u9898"]').click();`);
   await evaluate(`document.querySelector('[data-pacing-move][data-pacing-name="\u63d0\u51fa\u5bf9\u7b56\u9898"][data-pacing-move="-1"]').click();`);
   await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await sleep(100);
-  await evaluate(`document.querySelector('[data-pacing-remove][data-pacing-name="\u7533\u8bba\u6982\u62ec\u9898"]').click();`);
-  const touchState = await touchDrag('[data-pacing-catalog-card][data-pacing-name="\u7533\u8bba\u6982\u62ec\u9898"] [data-pacing-drag-handle]', '#pacingPlanZone');
   const essayPlan = await evaluate(`({ plan:document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]').length, order:[...document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]')].map(item => item.dataset.pacingName), fits:document.querySelector('#pacingPlanZone').scrollWidth <= document.querySelector('#pacingPlanZone').clientWidth && document.querySelector('#sectionTimeGrid').scrollWidth <= document.querySelector('#sectionTimeGrid').clientWidth })`);
-  assert(essayPlan.plan === 4 && essayPlan.order[0] === '\u63d0\u51fa\u5bf9\u7b56\u9898' && essayPlan.order.includes('\u7533\u8bba\u6982\u62ec\u9898') && essayPlan.fits, `Essay pacing drag/add/reorder failed or overflowed the mobile layout: ${JSON.stringify({ ...essayPlan, touchState })}`);
+  assert(essayPlan.plan === 4 && essayPlan.order[0] === '\u63d0\u51fa\u5bf9\u7b56\u9898' && essayPlan.order.includes('\u7533\u8bba\u6982\u62ec\u9898') && essayPlan.fits, `Essay pacing add/reorder failed or overflowed the mobile layout: ${JSON.stringify(essayPlan)}`);
   await evaluate(`document.querySelector('[data-pacing-group="xingce"]').click();`);
   const retainedXingcePlan = await evaluate(`({ plan:document.querySelectorAll('#pacingPlanList [data-pacing-plan-card]').length, removed:!document.querySelector('#pacingPlanList [data-pacing-name="\u5e38\u8bc6\u5224\u65ad"]'), addEnabled:!document.querySelector('[data-pacing-add][data-pacing-name="\u5e38\u8bc6\u5224\u65ad"]').disabled })`);
   assert(retainedXingcePlan.plan === 5 && retainedXingcePlan.removed && retainedXingcePlan.addEnabled, 'Xingce and essay pacing plans did not remain independent');

@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.29.3"
-set "COMMIT_MESSAGE=v2.29.3: harden long-press pacing drag"
+set "VERSION=v2.29.4"
+set "COMMIT_MESSAGE=v2.29.4: use plus buttons for pacing modules"
 
 echo === Prepare %VERSION% for GitHub ===
 

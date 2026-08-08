@@ -1345,6 +1345,7 @@ body.dark .backup-banner{background:color-mix(in srgb,var(--warning) 14%,var(--b
 .pacing-zone-heading small,.pacing-zone-heading>span{color:var(--muted);font-size:10px;line-height:1.4}
 .pacing-plan-list{display:grid;gap:6px}
 .pacing-plan-card{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:56px;padding:8px 9px;border:1px solid var(--line);border-radius:5px;background:var(--surface);transition:border-color .15s,background .15s,transform .15s}
+.pacing-plan-main{touch-action:none;cursor:grab}
 .pacing-plan-card:hover{border-color:var(--accent)}
 .pacing-plan-card.dragging,.pacing-plan-card.drop-target{border-color:var(--accent);background:var(--accent-2);transform:scale(.995)}
 .pacing-plan-main{display:grid;grid-template-columns:27px minmax(0,1fr);column-gap:7px;align-items:center;min-width:0;flex:1;text-align:left}
@@ -1362,6 +1363,7 @@ body.dark .backup-banner{background:color-mix(in srgb,var(--warning) 14%,var(--b
 .pacing-plan-empty{padding:14px 8px;border:1px dashed color-mix(in srgb,var(--accent) 50%,var(--line));border-radius:5px;color:var(--muted);font-size:11px;text-align:center}
 .pacing-catalog-zone .section-time-grid{margin-top:0}
 .pacing-catalog-card{grid-template-columns:auto minmax(0,1fr) auto}
+.pacing-catalog-card>label>span,.pacing-catalog-card>label>em{touch-action:none;cursor:grab}
 .pacing-catalog-card>label{grid-template-columns:minmax(0,1fr) 58px auto}
 .pacing-catalog-card.included{background:color-mix(in srgb,var(--accent-2) 40%,var(--surface-2))}
 .pacing-catalog-card.dragging{border-color:var(--accent);opacity:.65}

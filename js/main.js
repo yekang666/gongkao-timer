@@ -9,7 +9,7 @@ import { beginTimedMeta, editMockReport, finishMockModuleReview, finishTrainingM
 import { pipVideo, stopMobilePipSyncLoop, stopPipFrames, syncNativeVideoTime, togglePip } from './pip.js';
 import { closeRecordCreator, closeRecordEditor, openRecordCreator, openRecordFromHistoryEvent, openRecordFromHistoryKey, saveRecordCreator, saveRecordEditor, setDifficultyChoice } from './records.js';
 import { closeLapDetail, render, saveLapReviews, updateLapReviewFromClick, updateLapReviewNote } from './render.js';
-import { addPacingPreset, applyCustomDurations, handlePacingDragEnd, handlePacingDragOver, handlePacingDragStart, handlePacingDrop, movePacingPreset, removePacingPreset, renderSectionTimeSettings, saveSectionTimes, setPacingGroup } from './sections.js';
+import { addPacingPreset, applyCustomDurations, handlePacingPointerDown, handlePacingPointerEnd, handlePacingPointerMove, handlePacingTouchEnd, handlePacingTouchMove, handlePacingTouchStart, movePacingPreset, removePacingPreset, renderSectionTimeSettings, saveSectionTimes, setPacingGroup } from './sections.js';
 import { cancelSpeedSession, finishSpeedSession, showSpeedNextStep, showSpeedPreviousStep } from './speed.js';
 import { applySettings, exportData, exportRecordsCsv, handleGlobalShortcut, renderDataManagementSummary, renderStats } from './stats.js';
 import { confirmFinish, recordLap, renderPresets, requestFinish, resetTimer, saveQuantitySession, setMode, setSectionGroup, startOrPause, tick, undoLap } from './timer.js';
@@ -136,11 +136,14 @@ $('#pacingPlanList').addEventListener('click', event => {
   const remove = event.target.closest('[data-pacing-remove]'); if (remove) { removePacingPreset(remove.dataset.pacingName); return; }
   const move = event.target.closest('[data-pacing-move]'); if (move) movePacingPreset(move.dataset.pacingName, move.dataset.pacingMove);
 });
-$('#sectionTimeGrid').addEventListener('dragstart', handlePacingDragStart);
-$('#pacingPlanList').addEventListener('dragstart', handlePacingDragStart);
-$('#pacingPlanZone').addEventListener('dragover', handlePacingDragOver);
-$('#pacingPlanZone').addEventListener('drop', handlePacingDrop);
-document.addEventListener('dragend', handlePacingDragEnd);
+document.addEventListener('pointerdown', handlePacingPointerDown);
+document.addEventListener('pointermove', handlePacingPointerMove, { passive: false });
+document.addEventListener('pointerup', handlePacingPointerEnd);
+document.addEventListener('pointercancel', handlePacingPointerEnd);
+document.addEventListener('touchstart', handlePacingTouchStart, { passive: false });
+document.addEventListener('touchmove', handlePacingTouchMove, { passive: false });
+document.addEventListener('touchend', handlePacingTouchEnd, { passive: false });
+document.addEventListener('touchcancel', handlePacingTouchEnd, { passive: false });
 $('#exportDataBtn').addEventListener('click', exportData); $('#exportCsvBtn').addEventListener('click', exportRecordsCsv); $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click()); $('#importDataInput').addEventListener('change', e => { importDataFile(e.target.files[0]); e.target.value = ''; });
 $('#cancelRestoreBtn').addEventListener('click', cancelRestoreImport); $('#confirmMergeRestoreBtn').addEventListener('click', () => confirmRestoreImport('merge')); $('#confirmRestoreBtn').addEventListener('click', () => confirmRestoreImport('replace'));
 $('#pipBtn').addEventListener('click',togglePip);

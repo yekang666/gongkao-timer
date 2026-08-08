@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.29.1"
-set "COMMIT_MESSAGE=v2.29.1: fix pacing card dragging"
+set "VERSION=v2.29.3"
+set "COMMIT_MESSAGE=v2.29.3: harden long-press pacing drag"
 
 echo === Prepare %VERSION% for GitHub ===
 

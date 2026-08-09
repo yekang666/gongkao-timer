@@ -6,7 +6,7 @@ const XINGCE_SECTION_PRESETS = [
   { name: '政治理论', seconds: 10 * 60 }, { name: '常识判断', seconds: 5 * 60 }
 ];
 const ESSAY_SECTION_PRESETS = [
-  { name: '申论概括题', seconds: 20 * 60 }, { name: '分析理解题', seconds: 25 * 60 },
+  { name: '概括题', seconds: 20 * 60 }, { name: '分析理解题', seconds: 25 * 60 },
   { name: '提出对策题', seconds: 30 * 60 }, { name: '公文题', seconds: 25 * 60 },
   { name: '写作', seconds: 60 * 60 }
 ];
@@ -25,11 +25,11 @@ function $$(selector) { return [...document.querySelectorAll(selector)]; }
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
 const STORAGE_SESSION = 'examTimer.activeSession.v1';
-const APP_VERSION = 'v2.31.3';
+const APP_VERSION = 'v2.31.4';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const XINGCE_MODULE_NAMES = XINGCE_SECTION_PRESETS.map(({ name }) => name);
 const ESSAY_MODULE_NAMES = ESSAY_SECTION_PRESETS.map(({ name }) => name);
-const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '数量关系': 15, '政治理论': 20, '常识判断': 15, '申论概括题': 1, '分析理解题': 1, '提出对策题': 1, '公文题': 1, '写作': 1 };
+const SECTION_QUESTION_COUNTS = { '资料分析': 20, '言语理解': 30, '判断推理': 35, '数量关系': 15, '政治理论': 20, '常识判断': 15, '概括题': 1, '分析理解题': 1, '提出对策题': 1, '公文题': 1, '写作': 1 };
 const XINGCE_QUESTION_COUNTS = Object.fromEntries(XINGCE_MODULE_NAMES.map(name => [name, SECTION_QUESTION_COUNTS[name]]));
 const MOCK_PACING_QUESTION_COUNTS = { ...SECTION_QUESTION_COUNTS, '数量关系': 15 };
 const MOCK_MODULE_NAMES = XINGCE_MODULE_NAMES;
@@ -155,7 +155,8 @@ function normalizeRecords(records) {
     const endedAt = normalizeTimestamp(record.endedAt);
     if (!duration || !endedAt) return null;
     const mode = ['mock', 'section', 'single'].includes(record.mode) ? record.mode : 'single';
-    const module = normalizeText(record.module, 80) || '未分类';
+    const rawModule = normalizeText(record.module, 80);
+    const module = rawModule === '申论概括题' ? '概括题' : (rawModule || '未分类');
     const startedAt = normalizeTimestamp(record.startedAt) || new Date(new Date(endedAt).getTime() - duration * 1000).toISOString();
     const updatedAt = normalizeTimestamp(record.updatedAt);
     const questions = toPositiveInt(record.questions);

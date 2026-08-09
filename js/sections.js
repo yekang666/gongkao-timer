@@ -4,6 +4,7 @@ import { showToast } from './ui.js';
 
 const PACING_GROUPS = { xingce: XINGCE_MODULE_NAMES, essay: ESSAY_MODULE_NAMES };
 const PACING_GROUP_LABELS = { xingce: '行测', essay: '申论' };
+const PACING_NAME_ALIASES = { '申论概括题': '概括题' };
 let pacingReorder = null;
 let pacingReorderTimer = null;
 
@@ -14,7 +15,7 @@ function getPacingGroup(group = state.settings.pacingGroup) {
 function normalizePlan(group, plan) {
   const allowed = PACING_GROUPS[group];
   const source = Array.isArray(plan) ? plan : allowed;
-  return [...new Set(source.filter(name => allowed.includes(name)))];
+  return [...new Set(source.map(name => PACING_NAME_ALIASES[name] || name).filter(name => allowed.includes(name)))];
 }
 
 function normalizePacingPlans() {

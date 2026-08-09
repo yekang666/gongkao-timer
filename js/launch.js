@@ -14,7 +14,7 @@ const PRESET_SLUGS = {
   shuliang: '数量关系',
   zhengzhi: '政治理论',
   changshi: '常识判断',
-  'shenlun-gaikuo': '申论概括题',
+  'shenlun-gaikuo': '概括题',
   'shenlun-fenxi': '分析理解题',
   'shenlun-duice': '提出对策题',
   'shenlun-gongwen': '公文题',

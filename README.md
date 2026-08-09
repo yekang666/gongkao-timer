@@ -6,7 +6,7 @@
 
 在线使用：[公考刷题计时器](https://gongkao-timer.20041108.xyz)
 
-当前版本：v2.31.3
+当前版本：v2.31.4
 
 ---
 
@@ -60,7 +60,7 @@
 
 | 模块 | 默认时间 |
 |---|---:|
-| 申论概括题 | 20 分钟 |
+| 概括题 | 20 分钟 |
 | 分析理解题 | 25 分钟 |
 | 提出对策题 | 30 分钟 |
 | 公文题 | 25 分钟 |
@@ -327,7 +327,7 @@ iOS 的主屏幕网页图标不支持长按快捷菜单（系统限制），但�
 2. 点击底部分享按钮 → 「添加到主屏幕」。
 3. 改个名字（如「资料分析」）后添加，以后点这个图标就直接进入对应模式。
 
-常用直达参数：行测模考 `?mode=mock&preset=xingce`；申论国考 `?mode=mock&preset=shenlun-guo`；资料分析 `?mode=section&preset=ziliao`；申论概括题 `?mode=section&preset=shenlun-gaikuo`；分析理解题 `?mode=section&preset=shenlun-fenxi`；提出对策题 `?mode=section&preset=shenlun-duice`；公文题 `?mode=section&preset=shenlun-gongwen`；申论写作 `?mode=section&preset=shenlun-xiezuo`；自由测速 `?mode=single`；数据复盘 `?view=stats`。
+常用直达参数：行测模考 `?mode=mock&preset=xingce`；申论国考 `?mode=mock&preset=shenlun-guo`；资料分析 `?mode=section&preset=ziliao`；概括题 `?mode=section&preset=shenlun-gaikuo`；分析理解题 `?mode=section&preset=shenlun-fenxi`；提出对策题 `?mode=section&preset=shenlun-duice`；公文题 `?mode=section&preset=shenlun-gongwen`；申论写作 `?mode=section&preset=shenlun-xiezuo`；自由测速 `?mode=single`；数据复盘 `?view=stats`。
 
 ---
 
@@ -421,10 +421,11 @@ iOS 的主屏幕网页图标不支持长按快捷菜单（系统限制），但�
 
 ## 更新记录
 
-当前版本：v2.31.3
+当前版本：v2.31.4
 
 近期重点更新：
 
+- v2.31.4：申论“申论概括题”统一更名为“概括题”，并兼容旧记录、旧节奏方案和旧直达参数。
 - v2.31.3：自定义添加记录根据模式和题型动态显示字段；行测填写题数/正确数，申论和模考填写总分/得分。
 - v2.31.2：自定义添加记录的题型/模块改为下拉选择；模考显示行测模考、申论国考、申论省考，专项和自由测速显示全部题型。
 - v2.31.1：申论专项结束后填写总分和得分，并在训练记录与 CSV 导出中保留总分；行测专项继续填写题数和正确数。

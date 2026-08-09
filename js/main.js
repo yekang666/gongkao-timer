@@ -7,7 +7,7 @@ import { $, $$, persistActiveSession, restoreActiveSession, saveRecords, saveSet
 import { checkInExamCountdown, openExamCountdownSettings, saveExamCountdownSettings } from './exam.js';
 import { beginTimedMeta, editMockReport, finishMockModuleReview, finishTrainingMeta, openMockModuleReview, openMockReport, openReportLapReview, openTrainingMetaDialog, returnFromMockModuleReview, returnToTrainingPreviousStep } from './mock.js';
 import { pipVideo, stopMobilePipSyncLoop, stopPipFrames, syncNativeVideoTime, togglePip } from './pip.js';
-import { closeRecordCreator, closeRecordEditor, openRecordCreator, openRecordFromHistoryEvent, openRecordFromHistoryKey, renderRecordModuleOptions, saveRecordCreator, saveRecordEditor, setDifficultyChoice } from './records.js';
+import { closeRecordCreator, closeRecordEditor, openRecordCreator, openRecordFromHistoryEvent, openRecordFromHistoryKey, renderRecordModuleOptions, saveRecordCreator, saveRecordEditor, setDifficultyChoice, syncRecordCreateFields } from './records.js';
 import { closeLapDetail, render, saveLapReviews, updateLapReviewFromClick, updateLapReviewNote } from './render.js';
 import { addPacingPreset, applyCustomDurations, handlePacingReorderPointerDown, handlePacingReorderPointerEnd, handlePacingReorderPointerMove, handlePacingReorderTouchEnd, handlePacingReorderTouchMove, handlePacingReorderTouchStart, movePacingPreset, removePacingPreset, renderSectionTimeSettings, saveSectionTimes, setPacingGroup } from './sections.js';
 import { cancelSpeedSession, finishSpeedSession, showSpeedNextStep, showSpeedPreviousStep } from './speed.js';
@@ -88,7 +88,8 @@ $('#backTrainingMetaBtn').addEventListener('click', returnToTrainingPreviousStep
   $('#recordEditDialog').addEventListener('cancel', event => { event.preventDefault(); closeRecordEditor(); });
   $('#addRecordBtn').addEventListener('click', openRecordCreator);
   $('#recordCreateForm').addEventListener('submit', event => { event.preventDefault(); saveRecordCreator(); });
-  $('#createRecordMode').addEventListener('change', event => renderRecordModuleOptions(event.target.value));
+  $('#createRecordMode').addEventListener('change', event => { renderRecordModuleOptions(event.target.value); syncRecordCreateFields(); });
+  $('#createRecordModule').addEventListener('change', syncRecordCreateFields);
   $('#cancelRecordCreateBtn').addEventListener('click', closeRecordCreator);
   $('#recordCreateDialog').addEventListener('cancel', event => { event.preventDefault(); closeRecordCreator(); });
   $$('#createRecordDifficultyChoices [data-difficulty]').forEach(button => button.addEventListener('click', () => {

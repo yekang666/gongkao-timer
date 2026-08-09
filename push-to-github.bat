@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.31.2"
-set "COMMIT_MESSAGE=v2.31.2: use preset choices for custom records"
+set "VERSION=v2.31.3"
+set "COMMIT_MESSAGE=v2.31.3: tailor custom record fields by module"
 
 echo === Prepare %VERSION% for GitHub ===
 

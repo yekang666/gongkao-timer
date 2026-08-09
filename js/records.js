@@ -1,5 +1,5 @@
 import { APP_EVENTS, emitAppEvent } from './app-events.js';
-import { $, $$, normalizeLaps, normalizeModuleResults, normalizeRecords, normalizeText, saveRecords, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
+import { $, $$, PRESETS, normalizeLaps, normalizeModuleResults, normalizeRecords, normalizeText, saveRecords, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
 import { showToast } from './ui.js';
 
 function toDateTimeLocalValue(value) {
@@ -15,10 +15,21 @@ function fromDateTimeLocalValue(value) {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
+function getRecordModuleOptions(mode) {
+  return mode === 'mock' ? PRESETS.mock : PRESETS.section;
+}
+
+function renderRecordModuleOptions(mode, selected = '') {
+  const select = $('#createRecordModule'), options = getRecordModuleOptions(mode);
+  select.innerHTML = '<option value="">请选择题型或模块</option>' + options.map(preset => `<option value="${preset.name}">${preset.name}</option>`).join('');
+  select.value = options.some(preset => preset.name === selected) ? selected : '';
+}
+
 function openRecordCreator() {
   const form = $('#recordCreateForm');
   form.reset();
   $('#createRecordMode').value = state.mode;
+  renderRecordModuleOptions(state.mode);
   $('#createRecordEndedAt').value = toDateTimeLocalValue(new Date().toISOString());
   $('#createRecordSeconds').value = '0';
   setDifficultyChoice('createRecordDifficultyChoices', null);
@@ -32,10 +43,10 @@ function closeRecordCreator() {
 }
 
 function saveRecordCreator() {
-  const moduleName = normalizeText($('#createRecordModule').value, 80);
-  if (!moduleName) { showToast('请填写题型或模块'); $('#createRecordModule').focus(); return; }
   const mode = $('#createRecordMode').value;
   if (!['mock', 'section', 'single'].includes(mode)) { showToast('请选择训练模式'); $('#createRecordMode').focus(); return; }
+  const moduleName = normalizeText($('#createRecordModule').value, 80);
+  if (!getRecordModuleOptions(mode).some(preset => preset.name === moduleName)) { showToast('请选择题型或模块'); $('#createRecordModule').focus(); return; }
   const minutes = Math.floor(Number($('#createRecordMinutes').value || 0));
   const seconds = Math.floor(Number($('#createRecordSeconds').value || 0));
   if (!Number.isFinite(minutes) || !Number.isFinite(seconds) || minutes < 0 || seconds < 0 || seconds > 59) {
@@ -204,4 +215,4 @@ function openRecordFromHistoryKey(event) {
   openRecordEditor(row.dataset.recordId);
 }
 
-export { closeRecordCreator, closeRecordEditor, openRecordCreator, openRecordFromHistoryEvent, openRecordFromHistoryKey, saveRecordCreator, saveRecordEditor, setDifficultyChoice };
+export { closeRecordCreator, closeRecordEditor, getRecordModuleOptions, openRecordCreator, openRecordFromHistoryEvent, openRecordFromHistoryKey, renderRecordModuleOptions, saveRecordCreator, saveRecordEditor, setDifficultyChoice };

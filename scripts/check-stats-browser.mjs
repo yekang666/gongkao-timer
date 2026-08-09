@@ -117,6 +117,14 @@ try {
     const endedAt = new Date(Date.now() - index * 86400000);
     return { id:'record-' + index, mode:'section', module:'资料分析', duration:600, planned:1500, startedAt:new Date(endedAt - 600000).toISOString(), endedAt:endedAt.toISOString(), questions:10, correct:8, score:null, papers:null, laps:[], lapReviews:[], moduleResults:[], source:'', difficulty:index % 2 ? '正常' : '较难', note:'' };
   }); document.querySelector('#statsBtn').click();`);
+  await evaluate(`document.querySelector('#addRecordBtn').click();`);
+  const mockRecordChoices = await evaluate(`({ mode:document.querySelector('#createRecordMode').value, count:document.querySelectorAll('#createRecordModule option:not([value=""])').length, names:[...document.querySelectorAll('#createRecordModule option')].map(option => option.textContent) })`);
+  assert(mockRecordChoices.mode === 'mock' && mockRecordChoices.count === 3 && mockRecordChoices.names.includes('\u7533\u8bba\u56fd\u8003') && mockRecordChoices.names.includes('\u884c\u6d4b\u6a21\u8003'), 'Mock custom record choices are incorrect');
+  const sectionRecordChoices = await evaluate(`(() => { const select=document.querySelector('#createRecordMode'); select.value='section'; select.dispatchEvent(new Event('change')); return { count:document.querySelectorAll('#createRecordModule option:not([value=""])').length, writing:[...document.querySelectorAll('#createRecordModule option')].some(option => option.textContent === '\u5199\u4f5c') }; })()`);
+  assert(sectionRecordChoices.count === 11 && sectionRecordChoices.writing, 'Section custom record choices are incorrect');
+  const singleRecordChoices = await evaluate(`(() => { const select=document.querySelector('#createRecordMode'); select.value='single'; select.dispatchEvent(new Event('change')); return { count:document.querySelectorAll('#createRecordModule option:not([value=""])').length, writing:[...document.querySelectorAll('#createRecordModule option')].some(option => option.textContent === '\u5199\u4f5c') }; })()`);
+  assert(singleRecordChoices.count === 11 && singleRecordChoices.writing, 'Single custom record choices are incorrect');
+  await evaluate(`document.querySelector('#cancelRecordCreateBtn').click();`);
 
   await evaluate(`document.querySelector('[data-stats-view="trend"]').click(); document.querySelector('[data-trend-period="all"]').click();`);
   const trend = await evaluate(`({ period:state.trendPeriod, summary:document.querySelector('#trendPeriodSummary').textContent, bars:document.querySelectorAll('#trendChart .trend-day').length })`);

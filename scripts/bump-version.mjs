@@ -44,6 +44,12 @@ const updates = [
     expected: 1
   },
   {
+    file: 'index.html',
+    from: `src="js/main.js?v=${current}"`,
+    to: `src="js/main.js?v=${next}"`,
+    expected: 1
+  },
+  {
     file: 'README.md',
     from: `当前版本：${current}`,
     to: `当前版本：${next}`,
@@ -51,19 +57,21 @@ const updates = [
   }
 ];
 
-const prepared = updates.map(update => {
-  const fullPath = path.join(ROOT, update.file);
-  const source = fs.readFileSync(fullPath, 'utf8');
+const prepared = new Map();
+for (const update of updates) {
+  const existing = prepared.get(update.file);
+  const fullPath = existing?.fullPath || path.join(ROOT, update.file);
+  const source = existing?.source || fs.readFileSync(fullPath, 'utf8');
   const count = source.split(update.from).length - 1;
   if (count !== update.expected) {
     throw new Error(`${update.file}: expected ${update.expected} version marker(s), found ${count}`);
   }
-  return { ...update, fullPath, source: source.replaceAll(update.from, update.to), count };
-});
+  prepared.set(update.file, { fullPath, source: source.replaceAll(update.from, update.to), count: (existing?.count || 0) + count });
+}
 
-for (const update of prepared) {
+for (const [file, update] of prepared) {
   fs.writeFileSync(update.fullPath, update.source);
-  console.log(`${update.file}: ${current} -> ${next} (${update.count})`);
+  console.log(`${file}: ${current} -> ${next} (${update.count})`);
 }
 
 console.log(`Version updated from ${current} to ${next}`);

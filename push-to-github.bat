@@ -92,6 +92,25 @@ goto :failed
 
 :failed
 echo.
+echo GitHub connection failed. Retrying in 5 seconds (%FETCH_ATTEMPT%/3)...
+timeout /t 5 /nobreak >nul
+set /a FETCH_ATTEMPT+=1
+goto :fetch_retry
+
+:missing_git
+echo Git was not found in PATH.
+goto :failed
+
+:missing_node
+echo Node.js was not found in PATH.
+goto :failed
+
+:not_repo
+echo This script is not inside a Git repository.
+goto :failed
+
+:failed
+echo.
 echo Upload stopped because a command failed.
 pause
 exit /b 1

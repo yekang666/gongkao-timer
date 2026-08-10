@@ -141,6 +141,10 @@ try {
   const essayEditorFields = await evaluate(`({ total:Boolean(document.querySelector('#editRecordTotalScore')), score:Boolean(document.querySelector('#editRecordScore')), questions:!document.querySelector('#editRecordQuestions'), correct:!document.querySelector('#editRecordCorrect'), totalValue:document.querySelector('#editRecordTotalScore').value, scoreValue:document.querySelector('#editRecordScore').value })`);
   assert(essayEditorFields.total && essayEditorFields.score && essayEditorFields.questions && essayEditorFields.correct && essayEditorFields.totalValue === '50' && essayEditorFields.scoreValue === '32', 'Essay record editor fields are incorrect');
   await evaluate(`document.querySelector('#cancelRecordEditBtn').click(); window.state.records[0] = window.__editorOriginalRecord; document.querySelector('#statsBtn').click();`);
+  await evaluate(`document.querySelector('#editRecordScoreFieldsTemplate').remove(); document.querySelector('#editRecordQuestionFieldsTemplate').remove(); document.querySelector('[data-stats-view="history"]').click(); document.querySelector('#historyList [data-edit-record-id]').click();`);
+  const legacyEditorFallback = await evaluate(`({ questions:Boolean(document.querySelector('#editRecordQuestions')), correct:Boolean(document.querySelector('#editRecordCorrect')), dialogOpen:document.querySelector('#recordEditDialog').open })`);
+  assert(legacyEditorFallback.questions && legacyEditorFallback.correct && legacyEditorFallback.dialogOpen, 'Record editor fallback did not render question fields without templates');
+  await evaluate(`document.querySelector('#cancelRecordEditBtn').click();`);
 
   await evaluate(`window.__statsTestRecords = window.state.records; window.state.records = [
     ['申论国考', 68, 100, 2], ['申论省考', 72, 100, 8], ['概括题', 16, 20, 4], ['写作', 34, 50, 12]

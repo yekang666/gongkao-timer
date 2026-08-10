@@ -46,8 +46,24 @@ function syncRecordCreateFields() {
 
 function syncRecordEditFields(record) {
   const scoreMode = isScoreRecord(record.mode, record.module);
+  const fields = $('#editRecordResultFields');
   const template = $(scoreMode ? '#editRecordScoreFieldsTemplate' : '#editRecordQuestionFieldsTemplate');
-  $('#editRecordResultFields').replaceChildren(template.content.cloneNode(true));
+  if (fields) {
+    if (template) fields.replaceChildren(template.content.cloneNode(true));
+    else fields.innerHTML = scoreMode
+      ? '<label class="meta-field"><span>总分</span><input id="editRecordTotalScore" type="number" min="0.5" max="100" step="0.5" inputmode="decimal" placeholder="可留空"></label><label class="meta-field"><span>得分</span><input id="editRecordScore" type="number" min="0" max="100" step="0.5" inputmode="decimal" placeholder="可留空"></label>'
+      : '<label class="meta-field"><span>题数</span><input id="editRecordQuestions" type="number" min="1" step="1" inputmode="numeric" placeholder="可留空"></label><label class="meta-field"><span>正确数</span><input id="editRecordCorrect" type="number" min="0" step="1" inputmode="numeric" placeholder="可留空"></label>';
+    return scoreMode;
+  }
+  if (scoreMode && !$('#editRecordTotalScore')) {
+    const totalField = document.createElement('label');
+    totalField.className = 'meta-field';
+    totalField.innerHTML = '<span>总分</span><input id="editRecordTotalScore" type="number" min="0.5" max="100" step="0.5" inputmode="decimal" placeholder="可留空">';
+    $('#editRecordSource')?.closest('label')?.before(totalField);
+  }
+  [['editRecordTotalScore', scoreMode], ['editRecordScore', scoreMode], ['editRecordQuestions', !scoreMode], ['editRecordCorrect', !scoreMode]].forEach(([id, visible]) => {
+    $(`#${id}`)?.closest('label')?.classList.toggle('hidden', !visible);
+  });
   return scoreMode;
 }
 

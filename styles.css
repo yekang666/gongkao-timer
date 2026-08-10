@@ -886,6 +886,7 @@ dialog p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
   grid-template-columns: minmax(0, 1fr) 92px;
   gap: 10px;
 }
+.record-result-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .record-edit-form .meta-field select { width: 100%; min-height: 42px; padding: 10px 32px 10px 11px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface); color: var(--text); }
 #editRecordModule[readonly] {
   border-color: var(--line);
@@ -1112,7 +1113,7 @@ body.dark .mock-report-insights p { background: var(--surface-2); }
   .history-tools .compact-button { min-height: 42px; }
   .history-tools .danger-link { min-height: 42px; }
   #recordEditDialog, #recordCreateDialog { padding: 22px 18px; }
-  .record-edit-grid, .record-edit-pair { grid-template-columns: 1fr; }
+  .record-edit-grid, .record-edit-pair, .record-result-fields { grid-template-columns: 1fr; }
   .stats-view-tabs { top: -22px; margin: 0 -18px 22px; padding: 12px 18px 8px; overflow-x: auto; }
   .stats-view-tabs button { min-width: 52px; flex: 0 0 auto; font-size: 11px; }
   .settings-view-tabs { top: -22px; margin-left: -18px; margin-right: -18px; padding-left: 18px; padding-right: 18px; gap: 4px; }

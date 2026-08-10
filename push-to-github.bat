@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.31.9"
-set "COMMIT_MESSAGE=v2.31.9: fix module-specific record fields"
+set "VERSION=v2.31.10"
+set "COMMIT_MESSAGE=v2.31.10: fix record editor result fields"
 
 echo === Prepare %VERSION% for GitHub ===
 

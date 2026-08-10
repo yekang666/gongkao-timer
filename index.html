@@ -20,7 +20,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><img src="assets/app-icon.png" alt=""></span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.31.9</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.31.10</span></div><small>训练工作台</small></div>
       </div>
       <div class="exam-countdown" id="examCountdown">
         <button class="exam-countdown-main" id="examCountdownOpenBtn" type="button" title="设置考试倒计时">
@@ -210,10 +210,9 @@
           <label class="meta-field"><span>用时（分钟）</span><input id="editRecordMinutes" type="number" min="0" max="360" step="1" inputmode="numeric" required></label>
           <label class="meta-field"><span>秒</span><input id="editRecordSeconds" type="number" min="0" max="59" step="1" inputmode="numeric" required></label>
         </div>
-        <label class="meta-field hidden" id="editRecordTotalScoreWrap"><span>总分</span><input id="editRecordTotalScore" type="number" min="0.5" max="100" step="0.5" inputmode="decimal" placeholder="可留空"></label>
-        <label class="meta-field hidden" id="editRecordScoreWrap"><span>得分</span><input id="editRecordScore" type="number" min="0" max="100" step="0.5" inputmode="decimal" placeholder="可留空"></label>
-        <label class="meta-field hidden" id="editRecordQuestionsWrap"><span>题数</span><input id="editRecordQuestions" type="number" min="1" step="1" inputmode="numeric" placeholder="可留空"></label>
-        <label class="meta-field hidden" id="editRecordCorrectWrap"><span>正确数</span><input id="editRecordCorrect" type="number" min="0" step="1" inputmode="numeric" placeholder="可留空"></label>
+        <div class="record-result-fields record-edit-wide" id="editRecordResultFields"></div>
+        <template id="editRecordScoreFieldsTemplate"><label class="meta-field"><span>总分</span><input id="editRecordTotalScore" type="number" min="0.5" max="100" step="0.5" inputmode="decimal" placeholder="可留空"></label><label class="meta-field"><span>得分</span><input id="editRecordScore" type="number" min="0" max="100" step="0.5" inputmode="decimal" placeholder="可留空"></label></template>
+        <template id="editRecordQuestionFieldsTemplate"><label class="meta-field"><span>题数</span><input id="editRecordQuestions" type="number" min="1" step="1" inputmode="numeric" placeholder="可留空"></label><label class="meta-field"><span>正确数</span><input id="editRecordCorrect" type="number" min="0" step="1" inputmode="numeric" placeholder="可留空"></label></template>
         <label class="meta-field record-edit-wide"><span>试卷 / 资料来源</span><input id="editRecordSource" type="text" maxlength="80" placeholder="例如：2025 国考地市卷"></label>
       </div>
       <fieldset class="meta-group"><legend>本次难度</legend><div class="meta-choice-row" id="editRecordDifficultyChoices"><button data-difficulty="简单" type="button" aria-pressed="false">简单</button><button data-difficulty="正常" type="button" aria-pressed="false">正常</button><button data-difficulty="较难" type="button" aria-pressed="false">较难</button></div></fieldset>

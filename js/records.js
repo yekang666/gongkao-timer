@@ -46,10 +46,8 @@ function syncRecordCreateFields() {
 
 function syncRecordEditFields(record) {
   const scoreMode = isScoreRecord(record.mode, record.module);
-  $('#editRecordTotalScoreWrap').classList.toggle('hidden', !scoreMode);
-  $('#editRecordScoreWrap').classList.toggle('hidden', !scoreMode);
-  $('#editRecordQuestionsWrap').classList.toggle('hidden', scoreMode);
-  $('#editRecordCorrectWrap').classList.toggle('hidden', scoreMode);
+  const template = $(scoreMode ? '#editRecordScoreFieldsTemplate' : '#editRecordQuestionFieldsTemplate');
+  $('#editRecordResultFields').replaceChildren(template.content.cloneNode(true));
   return scoreMode;
 }
 
@@ -151,10 +149,13 @@ function openRecordEditor(recordId) {
   $('#editRecordMinutes').value = String(Math.floor(duration / 60));
   $('#editRecordSeconds').value = String(duration % 60);
   const scoreMode = syncRecordEditFields(record);
-  $('#editRecordTotalScore').value = scoreMode && toScore(record.totalScore) !== null ? String(toScore(record.totalScore)) : '';
-  $('#editRecordScore').value = toScore(record.score) === null ? '' : String(toScore(record.score));
-  $('#editRecordQuestions').value = toPositiveInt(record.questions) === null ? '' : String(toPositiveInt(record.questions));
-  $('#editRecordCorrect').value = toNonNegativeInt(record.correct) === null ? '' : String(toNonNegativeInt(record.correct));
+  if (scoreMode) {
+    $('#editRecordTotalScore').value = toScore(record.totalScore) === null ? '' : String(toScore(record.totalScore));
+    $('#editRecordScore').value = toScore(record.score) === null ? '' : String(toScore(record.score));
+  } else {
+    $('#editRecordQuestions').value = toPositiveInt(record.questions) === null ? '' : String(toPositiveInt(record.questions));
+    $('#editRecordCorrect').value = toNonNegativeInt(record.correct) === null ? '' : String(toNonNegativeInt(record.correct));
+  }
   $('#editRecordSource').value = record.source || '';
   $('#editRecordNote').value = record.note || '';
   setDifficultyChoice('editRecordDifficultyChoices', record.difficulty);

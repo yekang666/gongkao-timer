@@ -79,7 +79,7 @@ function returnFromMockModuleReview() {
   const modulePlan = pending.modulePlan.map(item => ({ ...item, correct: toNonNegativeInt($(`[data-mock-module-correct="${item.module}"]`)?.value) }));
   state.pendingMockModuleDraft = { ...pending, modulePlan, result: { ...pending.result, modulePlanDraft: modulePlan } };
   state.pendingTimed = null; $('#mockModuleDialog').close();
-  openCorrectInputDialog(pending.result.questions, { papers: pending.result.papers, score: true, endedAt: pending.result.endedAt, initial: pending.result });
+  openCorrectInputDialog(pending.result.questions, { score: true, endedAt: pending.result.endedAt, initial: pending.result });
 }
 
 function beginTimedMeta(result, previous = null) {
@@ -87,15 +87,15 @@ function beginTimedMeta(result, previous = null) {
   openTrainingMetaDialog(`${state.preset.name} · 训练复盘`, result.metaDraft, Boolean(previous));
 }
 
-function finalizeTimedSession(questions, papers, correct = null, score = null, meta = {}, moduleResults = [], endedAt = new Date().toISOString(), totalScore = null) {
-  const savedRecord = saveSession(questions, papers, correct, score, state.laps, meta, moduleResults, endedAt, totalScore);
+function finalizeTimedSession(questions, correct = null, score = null, meta = {}, moduleResults = [], endedAt = new Date().toISOString(), totalScore = null) {
+  const savedRecord = saveSession(questions, correct, score, state.laps, meta, moduleResults, endedAt, totalScore);
   if (!savedRecord) return;
   resetTimer(false);
   const accuracyText = questions && correct !== null ? `，正确率 ${formatAccuracy(correct, questions)}` : '';
   const scoreText = score !== null ? `，分数 ${formatScore(score)}` : '';
   const reviewedModuleCount = normalizeModuleResults(moduleResults).filter(result => result.correct !== null).length;
   const moduleText = reviewedModuleCount ? `，已复盘 ${reviewedModuleCount} 个模块` : '';
-  showToast(`${papers ? `已保存：${papers} 套卷子` : '训练记录已保存'}${scoreText}${accuracyText}${moduleText}`);
+  showToast(`训练记录已保存${scoreText}${accuracyText}${moduleText}`);
   if (savedRecord?.module === '行测模考') openMockReport(savedRecord.id);
   else if (savedRecord?.laps.length) openLapDetail(savedRecord.id);
 }
@@ -193,8 +193,8 @@ function finishTrainingMeta(skip = false) {
   const meta = skip ? (pending.context === 'mock-edit' ? pending.previousMeta : normalizeTrainingMeta()) : readTrainingMeta();
   state.pendingMeta = null; $('#trainingMetaDialog').close();
   if (pending.context === 'timed') {
-    const { questions, papers, correct, score, totalScore, moduleResults = [], endedAt } = pending.result;
-    finalizeTimedSession(questions, papers, correct, score, meta, moduleResults, endedAt, totalScore);
+    const { questions, correct, score, totalScore, moduleResults = [], endedAt } = pending.result;
+    finalizeTimedSession(questions, correct, score, meta, moduleResults, endedAt, totalScore);
   } else if (pending.context === 'speed') finalizeSpeedSession(pending.moduleName, meta);
   else if (pending.context === 'mock-edit') {
     const record = state.records.find(item => item.id === pending.recordId); if (!record) return;
@@ -226,7 +226,6 @@ function returnToTrainingPreviousStep() {
   if (previous.kind === 'finish') {
     const result = pending.result;
     openCorrectInputDialog(result.questions, {
-      papers: result.papers,
       score: result.score !== null,
       initial: result
     });

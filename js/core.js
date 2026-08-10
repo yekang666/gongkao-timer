@@ -25,7 +25,7 @@ function $$(selector) { return [...document.querySelectorAll(selector)]; }
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
 const STORAGE_SESSION = 'examTimer.activeSession.v1';
-const APP_VERSION = 'v2.31.5';
+const APP_VERSION = 'v2.31.6';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const XINGCE_MODULE_NAMES = XINGCE_SECTION_PRESETS.map(({ name }) => name);
 const ESSAY_MODULE_NAMES = ESSAY_SECTION_PRESETS.map(({ name }) => name);
@@ -127,7 +127,7 @@ function escapeAttribute(value) { return escapeHTML(value).replaceAll('"', '&quo
 function normalizeRecordId(value, record) {
   const candidate = String(value ?? '').trim().replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 128);
   if (/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(candidate)) return candidate;
-  const signature = [record.mode, record.module, record.startedAt, record.endedAt, record.duration, record.questions, record.correct, record.score, record.totalScore, record.papers].join('|');
+  const signature = [record.mode, record.module, record.startedAt, record.endedAt, record.duration, record.questions, record.correct, record.score, record.totalScore].join('|');
   let hash = 2166136261;
   for (let index = 0; index < signature.length; index += 1) {
     hash ^= signature.charCodeAt(index);
@@ -163,7 +163,6 @@ function normalizeRecords(records) {
     const correct = toNonNegativeInt(record.correct);
     const score = toScore(record.score);
     const totalScore = toScore(record.totalScore);
-    const papers = toPositiveInt(record.papers);
     const laps = normalizeLaps(record.laps);
     const lapReviews = normalizeLapReviews(record.lapReviews ?? record.reviews, laps.length);
     const moduleResults = normalizeModuleResults(record.moduleResults);
@@ -181,7 +180,6 @@ function normalizeRecords(records) {
       correct: questions && correct !== null ? Math.min(correct, questions) : null,
       score,
       totalScore: totalScore !== null && score !== null ? Math.max(totalScore, score) : totalScore,
-      papers,
       laps,
       lapReviews,
       moduleResults,

@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.31.5"
-set "COMMIT_MESSAGE=v2.31.5: add essay score prediction"
+set "VERSION=v2.31.6"
+set "COMMIT_MESSAGE=v2.31.6: remove record set count field"
 
 echo === Prepare %VERSION% for GitHub ===
 

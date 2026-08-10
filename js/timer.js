@@ -125,7 +125,7 @@ function requestFinish() {
   const endedAt = new Date().toISOString();
   pauseTimer();
   const lapQuestions = state.laps.length || null;
-  if (state.mode === 'mock') { openCorrectInputDialog(lapQuestions, { papers: 1, score: true, endedAt }); return; }
+  if (state.mode === 'mock') { openCorrectInputDialog(lapQuestions, { score: true, endedAt }); return; }
   if (state.preset.name === '数量关系' && !lapQuestions) { openQuantityChoiceDialog(endedAt); return; }
   const isEssaySection = ESSAY_MODULE_NAMES.includes(state.preset.name);
   openCorrectInputDialog(isEssaySection ? null : (lapQuestions || SECTION_QUESTION_COUNTS[state.preset.name] || null), { endedAt, score: isEssaySection, totalScore: isEssaySection });
@@ -150,8 +150,8 @@ function saveQuantitySession(questions) {
 }
 
 function openCorrectInputDialog(questions, options = {}) {
-  if (!questions && !options.editableQuestions && !options.score) { emitAppEvent(APP_EVENTS.OPEN_TIMED_META, { result: { questions: null, papers: null, correct: null, score: null, endedAt: options.endedAt || new Date().toISOString() } }); return; }
-  state.pendingTimed = { step: 'correct', questions, papers: options.papers ?? null, editableQuestions: Boolean(options.editableQuestions), score: Boolean(options.score), totalScore: Boolean(options.totalScore), endedAt: options.endedAt || options.initial?.endedAt || new Date().toISOString(), metaDraft: options.initial?.metaDraft || null };
+  if (!questions && !options.editableQuestions && !options.score) { emitAppEvent(APP_EVENTS.OPEN_TIMED_META, { result: { questions: null, correct: null, score: null, endedAt: options.endedAt || new Date().toISOString() } }); return; }
+  state.pendingTimed = { step: 'correct', questions, editableQuestions: Boolean(options.editableQuestions), score: Boolean(options.score), totalScore: Boolean(options.totalScore), endedAt: options.endedAt || options.initial?.endedAt || new Date().toISOString(), metaDraft: options.initial?.metaDraft || null };
   const hasTotalScore = Boolean(options.totalScore);
   $('#dialogTitle').textContent = hasTotalScore ? '填写总分与得分' : (options.score ? '填写本次分数' : (options.editableQuestions ? '填写本次正确率' : '填写正确数量'));
   if (hasTotalScore) $('#dialogMessage').textContent = `本次${state.preset.name} ${formatDuration(state.elapsed)}，请输入本题总分和实际得分。`;
@@ -193,8 +193,7 @@ function saveTimedCorrectSession() {
   }
   const correct = state.pendingTimed.score ? null : toNonNegativeInt($('#finishCorrectCount').value);
   if (!state.pendingTimed.score && (correct === null || correct > questions)) { showToast(`正确数量需在 0 到 ${questions} 之间`); $('#finishCorrectCount').focus(); return; }
-  const papers = state.pendingTimed.papers;
-  const result = { questions, papers, correct, score, totalScore, endedAt: state.pendingTimed.endedAt, metaDraft: state.pendingTimed.metaDraft };
+  const result = { questions, correct, score, totalScore, endedAt: state.pendingTimed.endedAt, metaDraft: state.pendingTimed.metaDraft };
   $('#finishDialog').close(); resetFinishDialog();
   if (state.pendingTimed.score && state.mode === 'mock' && state.preset.name === '行测模考') {
     const restored = state.pendingMockModuleDraft;

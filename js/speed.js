@@ -64,16 +64,16 @@ function renderSpeedTypePicker() {
 function selectSpeedType(moduleName) {
   const session = state.pendingSpeed; if (!session) return;
   const sameModule = session.moduleName === moduleName;
-  if (!sameModule) { session.questions = null; session.correct = null; session.score = null; session.papers = null; }
+  if (!sameModule) { session.questions = null; session.correct = null; session.score = null; }
   session.moduleName = moduleName; $('#singleModulePicker').classList.add('hidden');
   if (SPEED_SCORE_TYPES.has(moduleName)) {
-    session.step = 'score'; session.questions = session.laps.length || null; session.correct = null; session.papers = 1;
+    session.step = 'score'; session.questions = session.laps.length || null; session.correct = null;
     configureSpeedStepper(true); $('#speedScore').value = sameModule ? (session.score ?? '') : ''; $('#speedScoreWrap').classList.remove('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
     const lapText = session.laps.length ? `已自动记录 ${session.laps.length} 次逐题打点；` : '';
     updateSpeedDialogStep('score', { title: `填写${moduleName}成绩`, message: `${lapText}模考类型只需填写本次得分。`, nextLabel: '下一步：复盘' });
     $('#speedScore').focus(); return;
   }
-  const lapCount = session.laps.length; session.step = 'questions'; session.papers = null;
+  const lapCount = session.laps.length; session.step = 'questions';
   configureSpeedStepper(false); $('#speedQuestionCount').value = lapCount ? String(lapCount) : (sameModule ? (session.questions ?? 1) : 1); $('#speedQuestionCount').readOnly = lapCount > 0; $('#speedCountWrap').classList.remove('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
   $('#speedCountLabel').textContent = lapCount ? '逐题打点数量' : '本组题目数量';
   $('#speedCountHint').textContent = lapCount ? `已根据 ${lapCount} 次打点自动填写；如需修改，请取消后撤销打点` : '填写本轮实际完成的题数';
@@ -170,8 +170,8 @@ function resumeSpeedReviewStep() {
 
 function finalizeSpeedSession(moduleName, meta = {}) {
   const session = state.pendingSpeed; if (!session) return;
-  const questions = session.questions || null, correct = session.correct ?? null, score = toScore(session.score), papers = session.papers ?? null;
-  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, questions, papers, correct, score, laps: session.laps, lapReviews: [], ...normalizeTrainingMeta(meta) };
+  const questions = session.questions || null, correct = session.correct ?? null, score = toScore(session.score);
+  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, questions, correct, score, laps: session.laps, lapReviews: [], ...normalizeTrainingMeta(meta) };
   const previousRecords = [...state.records];
   state.records.unshift(savedRecord);
   state.records = capRecords(state.records);
@@ -196,9 +196,9 @@ function getDefaultQuestionCount() {
   return state.mode === 'section' ? (SECTION_QUESTION_COUNTS[state.preset.name] || null) : null;
 }
 
-function saveSession(questions, papers = null, correct = null, score = null, laps = [], meta = {}, moduleResults = [], endedAt = new Date().toISOString(), totalScore = null) {
+function saveSession(questions, correct = null, score = null, laps = [], meta = {}, moduleResults = [], endedAt = new Date().toISOString(), totalScore = null) {
   if (state.elapsed < 1) return null;
-  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt, questions, papers, correct, score, totalScore, laps: normalizeLaps(laps), lapReviews: [], moduleResults: normalizeModuleResults(moduleResults), ...normalizeTrainingMeta(meta) };
+  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: state.mode, module: state.preset.name, duration: Math.round(state.elapsed), planned: state.duration, startedAt: state.startedAt, endedAt, questions, correct, score, totalScore, laps: normalizeLaps(laps), lapReviews: [], moduleResults: normalizeModuleResults(moduleResults), ...normalizeTrainingMeta(meta) };
   const previousRecords = [...state.records];
   state.records.unshift(savedRecord);
   state.records = capRecords(state.records);

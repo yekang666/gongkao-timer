@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.31.8"
-set "COMMIT_MESSAGE=v2.31.8: retry GitHub fetch on network timeout"
+set "VERSION=v2.31.9"
+set "COMMIT_MESSAGE=v2.31.9: fix module-specific record fields"
 
 echo === Prepare %VERSION% for GitHub ===
 

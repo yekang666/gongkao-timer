@@ -26,7 +26,7 @@ function renderRecordModuleOptions(mode, selected = '') {
 }
 
 function isScoreRecord(mode, moduleName) {
-  return mode === 'mock' || ESSAY_MODULE_NAMES.includes(moduleName);
+  return PRESETS.mock.some(preset => preset.name === moduleName) || ESSAY_MODULE_NAMES.includes(moduleName) || (mode === 'mock' && !moduleName);
 }
 
 function syncRecordCreateFields() {
@@ -114,6 +114,7 @@ function saveRecordCreator() {
     questions,
     correct,
     score,
+    totalScore,
     laps: [],
     lapReviews: [],
     moduleResults: [],

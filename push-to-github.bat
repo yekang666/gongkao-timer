@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.31.6"
-set "COMMIT_MESSAGE=v2.31.6: remove record set count field"
+set "VERSION=v2.31.8"
+set "COMMIT_MESSAGE=v2.31.8: retry GitHub fetch on network timeout"
 
 echo === Prepare %VERSION% for GitHub ===
 
@@ -11,7 +11,7 @@ where git >nul 2>nul || goto :missing_git
 where node >nul 2>nul || goto :missing_node
 
 git rev-parse --is-inside-work-tree >nul 2>nul || goto :not_repo
-git fetch origin || goto :failed
+call :fetch_origin || goto :failed
 git merge-base --is-ancestor origin/main HEAD || goto :remote_ahead
 
 node scripts\bump-version.mjs "%VERSION%" || goto :failed
@@ -66,6 +66,17 @@ goto :done
 echo.
 echo Cancelled. Changes remain staged locally.
 goto :done
+
+:fetch_origin
+set "FETCH_ATTEMPT=1"
+:fetch_retry
+git fetch origin && exit /b 0
+if "%FETCH_ATTEMPT%"=="3" exit /b 1
+echo.
+echo GitHub connection failed. Retrying in 5 seconds (%FETCH_ATTEMPT%/3)...
+timeout /t 5 /nobreak >nul
+set /a FETCH_ATTEMPT+=1
+goto :fetch_retry
 
 :missing_git
 echo Git was not found in PATH.

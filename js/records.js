@@ -44,6 +44,15 @@ function syncRecordCreateFields() {
   }
 }
 
+function syncRecordEditFields(record) {
+  const scoreMode = isScoreRecord(record.mode, record.module);
+  $('#editRecordTotalScoreWrap').classList.toggle('hidden', !scoreMode);
+  $('#editRecordScoreWrap').classList.toggle('hidden', !scoreMode);
+  $('#editRecordQuestionsWrap').classList.toggle('hidden', scoreMode);
+  $('#editRecordCorrectWrap').classList.toggle('hidden', scoreMode);
+  return scoreMode;
+}
+
 function openRecordCreator() {
   const form = $('#recordCreateForm');
   form.reset();
@@ -140,6 +149,8 @@ function openRecordEditor(recordId) {
   $('#editRecordEndedAt').value = toDateTimeLocalValue(record.endedAt);
   $('#editRecordMinutes').value = String(Math.floor(duration / 60));
   $('#editRecordSeconds').value = String(duration % 60);
+  const scoreMode = syncRecordEditFields(record);
+  $('#editRecordTotalScore').value = scoreMode && toScore(record.totalScore) !== null ? String(toScore(record.totalScore)) : '';
   $('#editRecordScore').value = toScore(record.score) === null ? '' : String(toScore(record.score));
   $('#editRecordQuestions').value = toPositiveInt(record.questions) === null ? '' : String(toPositiveInt(record.questions));
   $('#editRecordCorrect').value = toNonNegativeInt(record.correct) === null ? '' : String(toNonNegativeInt(record.correct));
@@ -161,6 +172,7 @@ function saveRecordEditor() {
   if (index < 0) return closeRecordEditor();
   const record = state.records[index];
   const moduleName = record.module;
+  const scoreMode = isScoreRecord(record.mode, moduleName);
   const minutes = Math.floor(Number($('#editRecordMinutes').value || 0));
   const seconds = Math.floor(Number($('#editRecordSeconds').value || 0));
   if (!Number.isFinite(minutes) || !Number.isFinite(seconds) || minutes < 0 || seconds < 0 || seconds > 59) {
@@ -176,17 +188,24 @@ function saveRecordEditor() {
   }
   const endedAt = fromDateTimeLocalValue($('#editRecordEndedAt').value);
   if (!endedAt) { showToast('请选择有效的结束时间'); $('#editRecordEndedAt').focus(); return; }
-  const scoreRaw = $('#editRecordScore').value.trim();
-  const score = toScore(scoreRaw);
-  if (scoreRaw && score === null) { showToast('分数需要在 0 到 100 之间'); $('#editRecordScore').focus(); return; }
-  const questionsRaw = $('#editRecordQuestions').value.trim();
-  const questions = questionsRaw ? toPositiveInt(questionsRaw) : null;
-  if (questionsRaw && questions === null) { showToast('题量需要大于 0'); $('#editRecordQuestions').focus(); return; }
-  const correctRaw = $('#editRecordCorrect').value.trim();
-  const correct = correctRaw ? toNonNegativeInt(correctRaw) : null;
-  if (correctRaw && correct === null) { showToast('正确数不能小于 0'); $('#editRecordCorrect').focus(); return; }
-  if (correct !== null && questions === null) { showToast('填写正确数前，先补上题量'); $('#editRecordQuestions').focus(); return; }
-  if (questions !== null && correct !== null && correct > questions) { showToast('正确数不能大于题量'); $('#editRecordCorrect').focus(); return; }
+  let score = null, totalScore = null, questions = null, correct = null;
+  if (scoreMode) {
+    const totalScoreRaw = $('#editRecordTotalScore').value.trim(), scoreRaw = $('#editRecordScore').value.trim();
+    totalScore = totalScoreRaw ? toScore(totalScoreRaw) : null;
+    score = scoreRaw ? toScore(scoreRaw) : null;
+    if (totalScoreRaw && totalScore === null) { showToast('总分需要在 0 到 100 之间'); $('#editRecordTotalScore').focus(); return; }
+    if (scoreRaw && score === null) { showToast('得分需要在 0 到 100 之间'); $('#editRecordScore').focus(); return; }
+    if (Boolean(totalScoreRaw) !== Boolean(scoreRaw)) { showToast('总分和得分需要同时填写'); (totalScoreRaw ? $('#editRecordScore') : $('#editRecordTotalScore')).focus(); return; }
+    if (score !== null && totalScore !== null && score > totalScore) { showToast('得分不能高于总分'); $('#editRecordScore').focus(); return; }
+  } else {
+    const questionsRaw = $('#editRecordQuestions').value.trim(), correctRaw = $('#editRecordCorrect').value.trim();
+    questions = questionsRaw ? toPositiveInt(questionsRaw) : null;
+    correct = correctRaw ? toNonNegativeInt(correctRaw) : null;
+    if (questionsRaw && questions === null) { showToast('题数需要大于 0'); $('#editRecordQuestions').focus(); return; }
+    if (correctRaw && correct === null) { showToast('正确数不能小于 0'); $('#editRecordCorrect').focus(); return; }
+    if (correct !== null && questions === null) { showToast('填写正确数前，先补上题数'); $('#editRecordQuestions').focus(); return; }
+    if (questions !== null && correct !== null && correct > questions) { showToast('正确数不能大于题数'); $('#editRecordCorrect').focus(); return; }
+  }
   const laps = normalizeLaps(record.laps), lapTotal = laps.reduce((sum, value) => sum + value, 0);
   if (laps.length && questions !== null && questions !== laps.length) { showToast(`题量需与 ${laps.length} 次逐题打点一致`); $('#editRecordQuestions').focus(); return; }
   if (lapTotal > duration) { showToast('总用时不能短于逐题打点用时之和'); $('#editRecordMinutes').focus(); return; }
@@ -202,6 +221,7 @@ function saveRecordEditor() {
     questions,
     correct,
     score,
+    totalScore,
     source: $('#editRecordSource').value,
     difficulty: $('#editRecordDifficultyChoices [aria-pressed="true"]')?.dataset.difficulty || null,
     note: $('#editRecordNote').value,

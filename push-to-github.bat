@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.31.6"
-set "COMMIT_MESSAGE=v2.31.6: remove record set count field"
+set "VERSION=v2.31.7"
+set "COMMIT_MESSAGE=v2.31.7: tailor record edit fields by module"
 
 echo === Prepare %VERSION% for GitHub ===
 

@@ -1214,6 +1214,7 @@ body.dark #statsDrawer .stats-view-tabs button[aria-pressed="true"]:active {
 
 /* ===== 分数预测 ===== */
 .predict-hero{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.predict-switches{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
 .predict-score-card{display:flex;flex-direction:column;gap:4px;padding:18px 20px;background:linear-gradient(135deg,var(--accent) 0%,color-mix(in srgb,var(--accent) 78%,#123) 100%);color:#fff;border-radius:10px}
 .predict-score-card small{opacity:.82;font-size:12px}
 .predict-score-card strong{font-size:44px;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:.5px}
@@ -1245,6 +1246,7 @@ body.dark #statsDrawer .stats-view-tabs button[aria-pressed="true"]:active {
 body.dark .predict-score-card{background:linear-gradient(135deg,#2e6754 0%,#1d3a30 100%)}
 body.dark .predict-badge.mid{background:color-mix(in srgb,#54799a 18%,var(--surface))}
 body.dark .predict-advice{background:color-mix(in srgb,var(--accent) 14%,transparent)}
+@media(max-width:640px){.predict-switches{justify-content:flex-start}.predict-switches .period-switch{flex:1}.predict-switches .period-switch button{flex:1;padding-inline:8px}}
 
 /* ===== 自定义错因 ===== */
 .custom-reason-add{display:flex;align-items:center;gap:8px}

@@ -25,7 +25,7 @@ function $$(selector) { return [...document.querySelectorAll(selector)]; }
 const STORAGE_RECORDS = 'examTimer.records.v1';
 const STORAGE_SETTINGS = 'examTimer.settings.v1';
 const STORAGE_SESSION = 'examTimer.activeSession.v1';
-const APP_VERSION = 'v2.31.4';
+const APP_VERSION = 'v2.31.5';
 const TRACKING_CATEGORIES = [...PRESETS.mock, ...PRESETS.section].map(({ name }) => name);
 const XINGCE_MODULE_NAMES = XINGCE_SECTION_PRESETS.map(({ name }) => name);
 const ESSAY_MODULE_NAMES = ESSAY_SECTION_PRESETS.map(({ name }) => name);

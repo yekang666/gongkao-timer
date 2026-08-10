@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VERSION=v2.31.4"
-set "COMMIT_MESSAGE=v2.31.4: rename essay summary section"
+set "VERSION=v2.31.5"
+set "COMMIT_MESSAGE=v2.31.5: add essay score prediction"
 
 echo === Prepare %VERSION% for GitHub ===
 

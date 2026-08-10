@@ -1,5 +1,5 @@
 import { getPeriodRecords } from './analytics.js';
-import { $, $$, XINGCE_MODULE_NAMES, XINGCE_QUESTION_COUNTS, escapeHTML, normalizeModuleResults, saveSettings, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
+import { $, $$, ESSAY_MODULE_NAMES, XINGCE_MODULE_NAMES, XINGCE_QUESTION_COUNTS, escapeHTML, normalizeModuleResults, saveSettings, state, toNonNegativeInt, toPositiveInt, toScore } from './core.js';
 import { formatAccuracy } from './format.js';
 import { getOrderedSectionPresets, getSectionDurations } from './sections.js';
 import { showToast } from './ui.js';
@@ -18,8 +18,10 @@ const PREDICT_WINDOWS = [
   { days: 3650, label: '全部记录' }
 ];
 const PREDICT_MIN_SAMPLE = 40; // 窗口内正确率样本题量低于该值时自动放宽时间窗口
+const ESSAY_MOCK_MODULES = new Set(['申论国考', '申论省考']);
 
 function getPredictLevel() { return state.settings.predictLevel === 'city' ? 'city' : 'deputy'; }
+function getPredictSubject() { return state.settings.predictSubject === 'essay' ? 'essay' : 'xingce'; }
 
 function getLevelPlan(levelKey = getPredictLevel()) {
   const level = PREDICT_LEVELS[levelKey];
@@ -194,9 +196,83 @@ function buildAdvice(prediction) {
   return advice.slice(0, 2);
 }
 
+function getEssayScoreEntry(record, now) {
+  const isMock = ESSAY_MOCK_MODULES.has(record.module);
+  if (!isMock && !ESSAY_MODULE_NAMES.includes(record.module)) return null;
+  const score = toScore(record.score), totalScore = toScore(record.totalScore);
+  if (score === null) return null;
+  const endedAt = new Date(record.endedAt).getTime();
+  if (!Number.isFinite(endedAt)) return null;
+  const value = totalScore && totalScore > 0 ? score / totalScore * 100 : score;
+  const age = Math.max(0, (now - endedAt) / 86400000);
+  return { module: record.module, value: Math.max(0, Math.min(100, value)), isMock, weight: Math.exp(-age / 45) };
+}
+
+function getWeightedScoreStats(entries) {
+  const weight = entries.reduce((sum, entry) => sum + entry.weight, 0);
+  if (!weight) return null;
+  const average = entries.reduce((sum, entry) => sum + entry.value * entry.weight, 0) / weight;
+  const variance = entries.reduce((sum, entry) => sum + entry.weight * (entry.value - average) ** 2, 0) / weight;
+  return { average, deviation: Math.sqrt(variance), count: entries.length };
+}
+
+function getEssayPrediction(records, now) {
+  const entries = records.map(record => getEssayScoreEntry(record, now)).filter(Boolean);
+  const mocks = entries.filter(entry => entry.isMock);
+  const sections = entries.filter(entry => !entry.isMock);
+  // 整套申论成绩与单题分数不直接混算：整套记录足够时优先使用它。
+  const source = mocks.length >= 2 || !sections.length ? mocks : sections;
+  const stats = getWeightedScoreStats(source);
+  if (!stats) return null;
+  const sectionStats = ESSAY_MODULE_NAMES.map(name => ({ name, stats: getWeightedScoreStats(sections.filter(entry => entry.module === name)) })).filter(item => item.stats);
+  const mockStats = [...ESSAY_MOCK_MODULES].map(name => ({ name, stats: getWeightedScoreStats(mocks.filter(entry => entry.module === name)) })).filter(item => item.stats);
+  const interval = Math.max(3, Math.min(15, stats.deviation || 5));
+  return {
+    score: stats.average,
+    low: Math.max(0, stats.average - interval),
+    high: Math.min(100, stats.average + interval),
+    count: stats.count,
+    sourceLabel: source === mocks ? '申论整套模考成绩' : '申论专项标准化成绩',
+    modules: [...mockStats, ...sectionStats]
+  };
+}
+
+function renderEssayPrediction(now) {
+  let windowUsed = PREDICT_WINDOWS[PREDICT_WINDOWS.length - 1], records = [];
+  for (const window of PREDICT_WINDOWS) {
+    records = getPeriodRecords(window.days, 0, now);
+    const count = records.map(record => getEssayScoreEntry(record, now.getTime())).filter(Boolean).length;
+    windowUsed = window;
+    if (count >= 3) break;
+  }
+  const prediction = getEssayPrediction(records, now.getTime());
+  $('#predictTitle').textContent = '申论分数预测';
+  $('#predictPeriodSummary').textContent = `${windowUsed.label} · 基于申论总分与得分`;
+  $('#predictLevelSwitch').classList.add('hidden');
+  $('#predictTarget').classList.add('hidden');
+  $('#predictNote').textContent = '优先参考申论国考、省考整套模考成绩；整套样本不足时，使用概括、分析理解、提出对策、公文和写作的得分率折算为百分制。预测范围反映近期成绩波动，仅供训练参考。';
+  if (!prediction) {
+    $('#predictHero').innerHTML = '<div class="empty-state">完成申论模考，或补录带总分和得分的申论专项记录后，这里会给出预测分数。</div>';
+    $('#predictList').innerHTML = '';
+    $('#predictAdvice').innerHTML = '';
+    return;
+  }
+  $('#predictHero').innerHTML = `<div class="predict-score-card"><small>预测申论分数</small><strong>${formatPoint(prediction.score)}</strong><span>满分 100 · 预计范围 ${formatPoint(prediction.low)} - ${formatPoint(prediction.high)}</span></div><div class="predict-compare"><span><small>预测依据</small><strong>${escapeHTML(prediction.sourceLabel)}</strong></span><span><small>有效样本</small><strong>${prediction.count} 次</strong></span></div>`;
+  $('#predictList').innerHTML = prediction.modules.map(item => `<div class="predict-row"><div class="predict-row-head"><strong>${escapeHTML(item.name)}</strong><span class="predict-badge ${item.stats.count >= 3 ? 'high' : 'low'}">${item.stats.count} 次记录</span></div><div class="predict-row-meta"><span>标准化平均分 ${formatPoint(item.stats.average)}</span><span>近期波动 ${formatPoint(item.stats.deviation || 0)} 分</span></div><div class="predict-row-score"><div class="predict-bar" role="presentation"><i style="width:${Math.max(3, Math.round(item.stats.average))}%"></i></div><strong>${formatPoint(item.stats.average)}</strong><small>/ 100 分</small></div></div>`).join('');
+  const mainModule = [...prediction.modules].sort((a, b) => a.stats.average - b.stats.average)[0];
+  $('#predictAdvice').innerHTML = mainModule ? `<h4>复盘重点</h4><p>当前较低的是“${escapeHTML(mainModule.name)}”（${formatPoint(mainModule.stats.average)} 分），可优先补充该模块的专项记录，判断问题来自方法还是作答稳定性。</p>` : '';
+}
+
 export function renderPrediction(now = new Date()) {
   const panel = $('#predictHero');
   if (!panel) return;
+  const subject = getPredictSubject();
+  $$('#predictSubjectSwitch [data-predict-subject]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.predictSubject === subject)));
+  if (subject === 'essay') { renderEssayPrediction(now); return; }
+  $('#predictTitle').textContent = '行测分数预测';
+  $('#predictLevelSwitch').classList.remove('hidden');
+  $('#predictTarget').classList.remove('hidden');
+  $('#predictNote').textContent = '分值为民间流传的参考值（官方未公布分值），预测按当前专项时间配置估算完成度，未答完部分按 25% 蒙对率计入，结果仅供训练参考。';
   const plan = getLevelPlan();
   $$('#predictLevelSwitch [data-predict-level]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.predictLevel === plan.key)));
   let windowUsed = PREDICT_WINDOWS[PREDICT_WINDOWS.length - 1];
@@ -240,6 +316,13 @@ $('#predictLevelSwitch')?.addEventListener('click', event => {
   const button = event.target.closest('[data-predict-level]');
   if (!button) return;
   state.settings.predictLevel = button.dataset.predictLevel === 'city' ? 'city' : 'deputy';
+  saveSettings();
+  renderPrediction();
+});
+$('#predictSubjectSwitch')?.addEventListener('click', event => {
+  const button = event.target.closest('[data-predict-subject]');
+  if (!button) return;
+  state.settings.predictSubject = button.dataset.predictSubject === 'essay' ? 'essay' : 'xingce';
   saveSettings();
   renderPrediction();
 });

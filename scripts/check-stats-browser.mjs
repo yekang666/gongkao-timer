@@ -132,7 +132,17 @@ try {
   assert(singleRecordChoices.count === 11 && singleRecordChoices.writing, 'Single custom record choices are incorrect');
   await evaluate(`document.querySelector('#cancelRecordCreateBtn').click();`);
 
-  await evaluate(`document.querySelector('[data-stats-view="trend"]').click(); document.querySelector('[data-trend-period="all"]').click();`);
+  await evaluate(`window.__statsTestRecords = window.state.records; window.state.records = [
+    ['申论国考', 68, 100, 2], ['申论省考', 72, 100, 8], ['概括题', 16, 20, 4], ['写作', 34, 50, 12]
+  ].map(([module, score, totalScore, days], index) => { const endedAt = new Date(Date.now() - days * 86400000); return { id:'essay-' + index, mode:module.includes('申论') ? 'mock' : 'section', module, duration:3600, startedAt:new Date(endedAt - 3600000).toISOString(), endedAt:endedAt.toISOString(), questions:null, correct:null, score, totalScore, papers:null, laps:[], lapReviews:[], moduleResults:[], source:'', difficulty:null, note:'' }; }); document.querySelector('[data-stats-view="predict"]').click(); document.querySelector('[data-predict-subject="essay"]').click();`);
+  const essayPrediction = await evaluate(`({ title:document.querySelector('#predictTitle').textContent, score:document.querySelector('#predictHero .predict-score-card strong')?.textContent, rows:document.querySelectorAll('#predictList .predict-row').length, levelHidden:document.querySelector('#predictLevelSwitch').classList.contains('hidden'), targetHidden:document.querySelector('#predictTarget').classList.contains('hidden'), note:document.querySelector('#predictNote').textContent })`);
+  assert(essayPrediction.title === '申论分数预测' && Number(essayPrediction.score) >= 68 && Number(essayPrediction.score) <= 72 && essayPrediction.rows === 4 && essayPrediction.levelHidden && essayPrediction.targetHidden && essayPrediction.note.includes('整套模考'), `Essay prediction view is incorrect: ${JSON.stringify(essayPrediction)}`);
+  await evaluate(`document.querySelector('[data-predict-subject="xingce"]').click();`);
+  const xingcePrediction = await evaluate(`({ title:document.querySelector('#predictTitle').textContent, levelHidden:document.querySelector('#predictLevelSwitch').classList.contains('hidden'), targetHidden:document.querySelector('#predictTarget').classList.contains('hidden') })`);
+  assert(xingcePrediction.title === '行测分数预测' && !xingcePrediction.levelHidden && !xingcePrediction.targetHidden, 'Switching from essay prediction back to xingce did not restore xingce controls');
+  await evaluate(`window.state.records = window.__statsTestRecords; document.querySelector('[data-stats-view="trend"]').click();`);
+
+  await evaluate(`document.querySelector('[data-trend-period="all"]').click();`);
   const trend = await evaluate(`({ period:state.trendPeriod, summary:document.querySelector('#trendPeriodSummary').textContent, bars:document.querySelectorAll('#trendChart .trend-day').length })`);
   assert(trend.period === 'all' && trend.summary.startsWith('全部记录') && trend.bars === 75, 'All-time trend did not render all 75 daily buckets');
 

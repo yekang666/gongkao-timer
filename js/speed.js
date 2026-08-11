@@ -1,10 +1,13 @@
 import { APP_EVENTS, emitAppEvent } from './app-events.js';
-import { $, $$, SECTION_QUESTION_COUNTS, SPEED_SCORE_TYPES, TRACKING_CATEGORIES, capRecords, clearActiveSession, normalizeLaps, normalizeModuleResults, normalizeTrainingMeta, persistActiveSession, saveRecords, state, toNonNegativeInt, toScore } from './core.js';
+import { $, $$, ESSAY_MODULE_NAMES, SECTION_QUESTION_COUNTS, SPEED_SCORE_TYPES, TRACKING_CATEGORIES, capRecords, clearActiveSession, normalizeLaps, normalizeModuleResults, normalizeTrainingMeta, persistActiveSession, saveRecords, state, toNonNegativeInt, toScore } from './core.js';
 import { formatAccuracy, formatClock, formatScore } from './format.js';
 import { syncMobilePipSource, syncNativeVideoTime } from './pip.js';
 import { openLapDetail, render } from './render.js';
 import { tick } from './timer.js';
 import { hideToast, showToast, stopInterval } from './ui.js';
+
+function isEssaySpeedType(moduleName) { return ESSAY_MODULE_NAMES.includes(moduleName); }
+function isSpeedScoreType(moduleName) { return SPEED_SCORE_TYPES.has(moduleName) || isEssaySpeedType(moduleName); }
 
 function finishSpeedSession() {
   tick(); if (state.elapsed < .5) return;
@@ -14,7 +17,7 @@ function finishSpeedSession() {
 
 function openSpeedSaveDialog() {
   state.pendingSpeed.step = 'type';
-  $('#speedCountWrap').classList.add('hidden'); $('#speedCorrectWrap').classList.add('hidden'); $('#speedScoreWrap').classList.add('hidden'); $('#nextSpeedStepBtn').classList.add('hidden');
+  $('#speedCountWrap').classList.add('hidden'); $('#speedCorrectWrap').classList.add('hidden'); $('#speedTotalScoreWrap').classList.add('hidden'); $('#speedScoreWrap').classList.add('hidden'); $('#nextSpeedStepBtn').classList.add('hidden');
   configureSpeedStepper(false); renderSpeedTypePicker();
   updateSpeedDialogStep('type', { title: '先选择本次刷题类型', message: `本次正计时 ${formatClock(state.pendingSpeed.duration)}，不同题型将使用对应的保存流程。` });
   $('#singleModuleDialog').showModal();
@@ -55,7 +58,8 @@ function renderSpeedTypePicker() {
   const picker = $('#singleModulePicker'); picker.innerHTML = '';
   TRACKING_CATEGORIES.forEach(moduleName => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'module-choice';
-    button.innerHTML = `<strong>${moduleName}</strong><small>${SPEED_SCORE_TYPES.has(moduleName) ? '只填分数' : '题量 + 正确数'}</small>`;
+    const resultLabel = isEssaySpeedType(moduleName) ? '总分 + 得分' : (SPEED_SCORE_TYPES.has(moduleName) ? '填写成绩' : '题量 + 正确数');
+    button.innerHTML = `<strong>${moduleName}</strong><small>${resultLabel}</small>`;
     button.addEventListener('click', () => selectSpeedType(moduleName)); picker.appendChild(button);
   });
   picker.classList.remove('hidden');
@@ -64,15 +68,20 @@ function renderSpeedTypePicker() {
 function selectSpeedType(moduleName) {
   const session = state.pendingSpeed; if (!session) return;
   const sameModule = session.moduleName === moduleName;
-  if (!sameModule) { session.questions = null; session.correct = null; session.score = null; }
+  if (!sameModule) { session.questions = null; session.correct = null; session.score = null; session.totalScore = null; }
   session.moduleName = moduleName; $('#singleModulePicker').classList.add('hidden');
-  if (SPEED_SCORE_TYPES.has(moduleName)) {
-    session.step = 'score'; session.questions = session.laps.length || null; session.correct = null;
-    configureSpeedStepper(true); $('#speedScore').value = sameModule ? (session.score ?? '') : ''; $('#speedScoreWrap').classList.remove('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
+  if (isSpeedScoreType(moduleName)) {
+    const essayType = isEssaySpeedType(moduleName);
+    session.step = 'score'; session.questions = null; session.correct = null;
+    configureSpeedStepper(true); $('#speedTotalScore').value = essayType && sameModule ? (session.totalScore ?? '') : ''; $('#speedScore').value = sameModule ? (session.score ?? '') : '';
+    $('#speedTotalScoreWrap').classList.toggle('hidden', !essayType); $('#speedScoreWrap').classList.remove('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
+    $('#speedScoreLabel').textContent = essayType ? '本题得分' : '本次得分';
+    $('#speedScoreHint').textContent = essayType ? '得分不能高于总分，随后进入训练复盘' : '填写本次实际得分，随后进入训练复盘';
     const lapText = session.laps.length ? `已自动记录 ${session.laps.length} 次逐题打点；` : '';
-    updateSpeedDialogStep('score', { title: `填写${moduleName}成绩`, message: `${lapText}模考类型只需填写本次得分。`, nextLabel: '下一步：复盘' });
-    $('#speedScore').focus(); return;
+    updateSpeedDialogStep('score', { title: `填写${moduleName}成绩`, message: `${lapText}${essayType ? '请填写本题总分和实际得分。' : '请填写本次得分。'}`, nextLabel: '下一步：复盘' });
+    (essayType ? $('#speedTotalScore') : $('#speedScore')).focus(); return;
   }
+  $('#speedTotalScoreWrap').classList.add('hidden');
   const lapCount = session.laps.length; session.step = 'questions';
   configureSpeedStepper(false); $('#speedQuestionCount').value = lapCount ? String(lapCount) : (sameModule ? (session.questions ?? 1) : 1); $('#speedQuestionCount').readOnly = lapCount > 0; $('#speedCountWrap').classList.remove('hidden'); $('#nextSpeedStepBtn').classList.remove('hidden');
   $('#speedCountLabel').textContent = lapCount ? '逐题打点数量' : '本组题目数量';
@@ -113,9 +122,13 @@ function finishSpeedCorrectStep() {
 }
 
 function finishSpeedScoreStep() {
+  const essayType = isEssaySpeedType(state.pendingSpeed.moduleName);
+  const totalScore = essayType ? toScore($('#speedTotalScore').value) : null;
+  if (essayType && (totalScore === null || totalScore <= 0)) { showToast('总分需在 0 到 100 之间'); $('#speedTotalScore').focus(); return; }
   const score = toScore($('#speedScore').value);
-  if (score === null) { showToast('分数需在 0 到 100 之间'); $('#speedScore').focus(); return; }
-  hideToast(); state.pendingSpeed.score = score; beginSpeedMeta();
+  if (score === null) { showToast('得分需在 0 到 100 之间'); $('#speedScore').focus(); return; }
+  if (totalScore !== null && score > totalScore) { showToast('得分不能高于总分'); $('#speedScore').focus(); return; }
+  hideToast(); state.pendingSpeed.score = score; state.pendingSpeed.totalScore = totalScore; beginSpeedMeta();
 }
 
 function beginSpeedMeta() {
@@ -127,8 +140,8 @@ function beginSpeedMeta() {
 function showSpeedPreviousStep() {
   const session = state.pendingSpeed; if (!session) return;
   if (session.step === 'score') {
-    session.score = $('#speedScore').value;
-    session.step = 'type'; $('#speedScoreWrap').classList.add('hidden'); $('#nextSpeedStepBtn').classList.add('hidden');
+    session.score = $('#speedScore').value; session.totalScore = isEssaySpeedType(session.moduleName) ? $('#speedTotalScore').value : null;
+    session.step = 'type'; $('#speedTotalScoreWrap').classList.add('hidden'); $('#speedScoreWrap').classList.add('hidden'); $('#nextSpeedStepBtn').classList.add('hidden');
     configureSpeedStepper(false); renderSpeedTypePicker();
     updateSpeedDialogStep('type', { title: '先选择本次刷题类型', message: `本次正计时 ${formatClock(session.duration)}，不同题型将使用对应的保存流程。` });
     $('#singleModulePicker .module-choice').focus();
@@ -154,11 +167,14 @@ function showSpeedPreviousStep() {
 function resumeSpeedReviewStep() {
   const session = state.pendingSpeed; if (!session) return;
   const isScore = session.step === 'score';
-  $('#singleModulePicker').classList.add('hidden'); $('#speedCountWrap').classList.toggle('hidden', isScore); $('#speedCorrectWrap').classList.toggle('hidden', true); $('#speedScoreWrap').classList.toggle('hidden', !isScore); $('#nextSpeedStepBtn').classList.remove('hidden');
+  const essayType = isScore && isEssaySpeedType(session.moduleName);
+  $('#singleModulePicker').classList.add('hidden'); $('#speedCountWrap').classList.toggle('hidden', isScore); $('#speedCorrectWrap').classList.toggle('hidden', true); $('#speedTotalScoreWrap').classList.toggle('hidden', !essayType); $('#speedScoreWrap').classList.toggle('hidden', !isScore); $('#nextSpeedStepBtn').classList.remove('hidden');
   if (isScore) {
-    configureSpeedStepper(true); $('#speedScore').value = session.score ?? '';
-    updateSpeedDialogStep('score', { title: `填写${session.moduleName}成绩`, message: '模考类型只需填写本次得分。', nextLabel: '下一步：复盘' });
-    $('#speedScore').focus();
+    configureSpeedStepper(true); $('#speedTotalScore').value = essayType ? (session.totalScore ?? '') : ''; $('#speedScore').value = session.score ?? '';
+    $('#speedScoreLabel').textContent = essayType ? '本题得分' : '本次得分';
+    $('#speedScoreHint').textContent = essayType ? '得分不能高于总分，随后进入训练复盘' : '填写本次实际得分，随后进入训练复盘';
+    updateSpeedDialogStep('score', { title: `填写${session.moduleName}成绩`, message: essayType ? '请填写本题总分和实际得分。' : '请填写本次得分。', nextLabel: '下一步：复盘' });
+    (essayType ? $('#speedTotalScore') : $('#speedScore')).focus();
   } else {
     configureSpeedStepper(false); session.step = 'correct'; $('#speedCountWrap').classList.add('hidden'); $('#speedCorrectWrap').classList.remove('hidden');
     $('#speedCorrectCount').max = String(session.questions || 1); $('#speedCorrectCount').value = session.correct ?? '';
@@ -170,20 +186,21 @@ function resumeSpeedReviewStep() {
 
 function finalizeSpeedSession(moduleName, meta = {}) {
   const session = state.pendingSpeed; if (!session) return;
-  const questions = session.questions || null, correct = session.correct ?? null, score = toScore(session.score);
-  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, questions, correct, score, laps: session.laps, lapReviews: [], ...normalizeTrainingMeta(meta) };
+  const scoreType = isSpeedScoreType(moduleName), essayType = isEssaySpeedType(moduleName);
+  const questions = scoreType ? null : (session.questions || null), correct = scoreType ? null : (session.correct ?? null), score = scoreType ? toScore(session.score) : null, totalScore = essayType ? toScore(session.totalScore) : null;
+  const savedRecord = { id: crypto.randomUUID?.() || `${Date.now()}`, mode: 'single', module: moduleName, duration: session.duration, planned: null, startedAt: session.startedAt, endedAt: session.endedAt, questions, correct, score, totalScore, laps: session.laps, lapReviews: [], ...normalizeTrainingMeta(meta) };
   const previousRecords = [...state.records];
   state.records.unshift(savedRecord);
   state.records = capRecords(state.records);
   if (!saveRecords()) { state.records = previousRecords; return; }
-  const resultText = score !== null ? `分数 ${formatScore(score)}` : `${questions} 题，正确率 ${formatAccuracy(correct, questions)}`;
+  const resultText = score !== null ? `得分 ${formatScore(score)}${totalScore !== null ? ` / 总分 ${formatScore(totalScore)}` : ''}` : `${questions} 题，正确率 ${formatAccuracy(correct, questions)}`;
   const paceText = questions ? `，均时 ${formatClock(session.duration / questions).slice(3)}` : '';
   state.pendingSpeed = null; clearActiveSession(); $('#singleModuleDialog').close(); resetSpeedSaveDialog(); state.elapsed = 0; state.startedAt = null; state.status = 'idle'; state.laps = []; state.lastLapElapsed = 0; emitAppEvent(APP_EVENTS.RENDER_STATS); render(); syncMobilePipSource(true); showToast(`已记录到${moduleName}：${resultText}${paceText}`);
   if (savedRecord.laps.length) openLapDetail(savedRecord.id);
 }
 
 function resetSpeedSaveDialog() {
-  $('#speedCountWrap').classList.add('hidden'); $('#speedCorrectWrap').classList.add('hidden'); $('#speedScoreWrap').classList.add('hidden'); $('#singleModulePicker').classList.add('hidden'); $('#nextSpeedStepBtn').classList.add('hidden');
+  $('#speedCountWrap').classList.add('hidden'); $('#speedCorrectWrap').classList.add('hidden'); $('#speedTotalScoreWrap').classList.add('hidden'); $('#speedScoreWrap').classList.add('hidden'); $('#singleModulePicker').classList.add('hidden'); $('#nextSpeedStepBtn').classList.add('hidden');
   $('#speedQuestionCount').readOnly = false; $('#speedCountLabel').textContent = '本组题目数量'; $('#speedCountHint').textContent = '填写本轮实际完成的题数';
   configureSpeedStepper(false); updateSpeedDialogStep('type', { title: '先选择本次刷题类型', message: '', nextLabel: '' });
 }

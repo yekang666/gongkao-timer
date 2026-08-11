@@ -20,7 +20,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><img src="assets/app-icon.png" alt=""></span>
-        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.31.13</span></div><small>训练工作台</small></div>
+        <div class="brand-copy"><div class="brand-title-row"><strong>公考刷题计时器</strong><span class="version-badge" title="当前版本">v2.31.14</span></div><small>训练工作台</small></div>
       </div>
       <div class="exam-countdown" id="examCountdown">
         <button class="exam-countdown-main" id="examCountdownOpenBtn" type="button" title="设置考试倒计时">
@@ -181,7 +181,8 @@
     <p id="singleLapMessage"></p>
     <label class="question-input speed-field" id="speedCountWrap"><span id="speedCountLabel">本组题目数量</span><input id="speedQuestionCount" type="number" min="1" step="1" inputmode="numeric" value="1" required><small id="speedCountHint">填写本轮实际完成的题数</small></label>
     <label class="question-input speed-field hidden" id="speedCorrectWrap"><span>本组正确数量</span><input id="speedCorrectCount" type="number" min="0" step="1" inputmode="numeric" value="" placeholder="请填写" required><small id="speedCorrectHint">必须主动填写，避免误记为全部正确</small></label>
-    <label class="question-input speed-field hidden" id="speedScoreWrap"><span>本次得分</span><input id="speedScore" type="number" min="0" max="100" step="0.5" inputmode="decimal" value="" placeholder="0 - 100" required><small id="speedScoreHint">模考类型只需填写成绩，随后进入训练复盘</small></label>
+    <label class="question-input speed-field hidden" id="speedTotalScoreWrap"><span>本题总分</span><input id="speedTotalScore" type="number" min="0.5" max="100" step="0.5" inputmode="decimal" value="" placeholder="0 - 100" required><small>申论题型需填写本题总分</small></label>
+    <label class="question-input speed-field hidden" id="speedScoreWrap"><span id="speedScoreLabel">本次得分</span><input id="speedScore" type="number" min="0" max="100" step="0.5" inputmode="decimal" value="" placeholder="0 - 100" required><small id="speedScoreHint">填写本次实际得分，随后进入训练复盘</small></label>
     <div class="module-picker hidden" id="singleModulePicker"></div>
     <div class="dialog-actions"><button class="secondary" id="cancelSingleModuleBtn" type="button">取消</button><button class="secondary hidden" id="previousSpeedStepBtn" type="button">上一步</button><button class="primary hidden" id="nextSpeedStepBtn" type="button">下一步</button></div>
   </dialog>
@@ -303,6 +304,6 @@
     <video id="pipVideo" muted playsinline webkit-playsinline loop preload="auto" disablepictureinpicture="false"></video>
   </div>
   <div class="toast hidden" id="toast" role="status"></div>
-  <script type="module" src="js/main.js?v=v2.31.13"></script>
+  <script type="module" src="js/main.js?v=v2.31.14"></script>
 </body>
 </html>
